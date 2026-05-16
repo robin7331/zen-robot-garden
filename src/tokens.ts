@@ -77,13 +77,11 @@ export const DRIVE = {
   collisionTurnMin: 1.2, // rad — kleinste Drehung (~69°)
   collisionTurnMax: 3.0, // rad — größte Drehung (~172°)
 
-  // Drehung nach dem Überqueren des Begrenzungsdrahts: der Roboter wird vom
-  // Draht "abgelenkt" — steiler Anstoß ergibt eine große Drehung, schräges
-  // Streifen eine kleine. Dazu kommt etwas Zufall, damit nie zweimal dieselbe
-  // Spur entsteht. wireTurnMaxDeviation begrenzt, wie schräg zum Draht der
-  // Roboter danach höchstens wegfährt — er zeigt immer deutlich nach innen.
-  wireTurnJitter: 0.5, // rad — Zufalls-Streuung der Abkehr (~29°)
-  wireTurnMaxDeviation: 1.22, // rad — max. Abweichung von "geradewegs nach innen" (~70°)
+  // Drehung nach dem Überqueren des Begrenzungsdrahts: wie bei einem echten
+  // Mähroboter ein zufälliger Kurs — kein berechneter Abprall. Der Zufall
+  // streut nur um "geradewegs nach innen" herum, damit der Roboter sicher
+  // wieder ins Feld zeigt; wireTurnSpread ist die maximale Abweichung davon.
+  wireTurnSpread: 1.22, // rad — max. Abweichung von "geradewegs nach innen" (~70°)
 } as const;
 
 /**
@@ -92,10 +90,10 @@ export const DRIVE = {
  * Kreislauf gut sieht; für ruhigeres Zen-Tempo die Werte kleiner machen.
  */
 export const BATTERY = {
-  drain: 0.022, // pro Sekunde beim Fahren — voll -> niedrig in ~34 s
+  drain: 0.011, // pro Sekunde beim Fahren — voll -> leer in ~91 s
   charge: 0.08, // pro Sekunde an der Station — fast leer -> voll in ~12 s
-  low: 0.5, // ab hier sucht der Roboter den Leitdraht und fährt heim
-  //            (~23 s Reserve: deckt eine Heimfahrt plus einen Stoß)
+  low: 0.3, // ab hier (<= 30 %) sucht der Roboter den Leitdraht und fährt
+  //           heim (~27 s Reserve: deckt eine Heimfahrt plus einen Stoß)
   full: 0.99, // ab hier verlässt er die Station wieder
 } as const;
 

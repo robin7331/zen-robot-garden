@@ -26,8 +26,9 @@ oder verlieren. Man schaut einfach dem Roboter zu, wie er den Garten mäht. Endl
 - Der Roboter fährt **ganz allein** (autonom). Niemand steuert ihn.
 - Er fährt **geradeaus**, bis er den **Begrenzungsdraht** (siehe unten) erreicht oder
   an ein **Hindernis stößt**. Dann fährt er ein kleines Stück **zurück** und dreht sich
-  weg. Am Draht hängt der Drehwinkel davon ab, wie schräg er ihn getroffen hat; an
-  einem Hindernis dreht er sich in eine **zufällige Richtung**.
+  in eine **zufällige Richtung** weg — am Draht wie am Hindernis, genau wie ein
+  echter Mähroboter. Am Draht zeigt die Zufalls-Richtung nur immer wieder
+  zurück ins Feld, damit er nicht erneut hinausfährt.
 - Er hat **zwei Räder mit je einem Motor** (das nennt man *Differentialantrieb*).
   Der Roboter fährt **nur**, weil sich seine Räder drehen — er wird nicht "gebeamt".
   - Beide Räder gleich schnell → er fährt geradeaus.

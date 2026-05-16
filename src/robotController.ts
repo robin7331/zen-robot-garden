@@ -619,37 +619,19 @@ export class RobotController {
   }
 
   /**
-   * Berechnet den Ziel-Kurs nach einer Begrenzungsdraht-Überquerung.
+   * Ziel-Kurs nach einer Begrenzungsdraht-Überquerung.
    *
-   * Der Kurs wird am *überquerten Segment* gespiegelt — wie bei einem echten
-   * Mähroboter, der aus seinen Spulen den Einfallswinkel kennt: ein steiler
-   * Anstoß ergibt eine große Drehung (fast Kehrtwende), ein schräges Streifen
-   * nur eine kleine. Etwas Zufall kommt dazu, und am Ende stellen wir sicher,
-   * dass der Roboter deutlich nach innen zeigt.
+   * Wie ein echter Mähroboter: kein berechneter Abprall, sondern ein
+   * zufälliger neuer Kurs. Der einzige Zwang ist, dass der Roboter wieder
+   * ins Feld zeigen muss — darum streut der Zufall nur um "geradewegs nach
+   * innen" herum (± wireTurnSpread).
    */
   private computeWireTurnTarget(): number {
-    // Nach-außen zeigende Normale am überquerten Draht-Segment.
+    // Nach-innen zeigende Richtung am überquerten Draht-Segment.
     const n = outwardNormal(BOUNDARY, this.senseFrontX, this.senseFrontZ);
-
-    // Kurs am Draht spiegeln (Reflexion an der Segment-Linie).
-    const fx = this._fwd.x;
-    const fz = this._fwd.z;
-    const dot = fx * n.x + fz * n.z;
-    const reflX = fx - 2 * dot * n.x;
-    const reflZ = fz - 2 * dot * n.z;
-    let targetYaw = Math.atan2(reflX, reflZ);
-
-    // Etwas Zufall, damit nie zweimal dieselbe Spur entsteht (zen).
-    targetYaw += (Math.random() * 2 - 1) * DRIVE.wireTurnJitter;
-
-    // Sicher nach innen: höchstens wireTurnMaxDeviation von "geradewegs nach
-    // innen" abweichen -> der Roboter zeigt danach immer klar ins Feld.
     const inwardYaw = Math.atan2(-n.x, -n.z);
-    const dev = THREE.MathUtils.clamp(
-      wrapPi(targetYaw - inwardYaw),
-      -DRIVE.wireTurnMaxDeviation,
-      DRIVE.wireTurnMaxDeviation,
-    );
+    // Zufällige Abweichung davon, begrenzt -> der Roboter zeigt klar ins Feld.
+    const dev = (Math.random() * 2 - 1) * DRIVE.wireTurnSpread;
     return wrapPi(inwardYaw + dev);
   }
 
