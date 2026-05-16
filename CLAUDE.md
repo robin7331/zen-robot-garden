@@ -26,9 +26,11 @@ oder verlieren. Man schaut einfach dem Roboter zu, wie er den Garten mäht. Endl
 - Der Roboter fährt **ganz allein** (autonom). Niemand steuert ihn.
 - Er fährt **geradeaus**, bis er den **Begrenzungsdraht** (siehe unten) erreicht oder
   an ein **Hindernis stößt**. Dann fährt er ein kleines Stück **zurück** und dreht sich
-  in eine **zufällige Richtung** weg — am Draht wie am Hindernis, genau wie ein
-  echter Mähroboter. Am Draht zeigt die Zufalls-Richtung nur immer wieder
-  zurück ins Feld, damit er nicht erneut hinausfährt.
+  in eine **zufällige Richtung** — am Draht wie am Hindernis **genau gleich**, so wie
+  ein echter Mähroboter. Die Drahtspule spürt nur *innen/draußen*, nicht die
+  Richtung des Drahts — darum lenkt der Roboter nicht gezielt ins Feld, sondern
+  dreht einfach zufällig. Zeigt er danach wieder zum Draht, kreuzt er ihn eben
+  nochmal — an Ecken auch mehrmals kurz hintereinander, wie im echten Garten.
 - Er hat **zwei Räder mit je einem Motor** (das nennt man *Differentialantrieb*).
   Der Roboter fährt **nur**, weil sich seine Räder drehen — er wird nicht "gebeamt".
   - Beide Räder gleich schnell → er fährt geradeaus.
@@ -68,8 +70,10 @@ Spulen-Sensoren**, einen vorne und einen hinten. Jede Spule "spürt", ob sie noc
 **innerhalb** der Schleife ist oder schon **draußen**.
 
 - Vordere Spule draußen → die Nase hat den Draht überquert → der Roboter setzt
-  zurück und dreht vom Draht weg. Er **stößt also nirgends an** — er spürt die
-  Grenze und kehrt vorher um.
+  zurück und dreht in einen **zufälligen** Kurs — dieselbe Reaktion wie nach
+  einem Stoß. Er **stößt also nirgends an**, sondern spürt die Grenze. Weil er
+  zufällig dreht, kann er gleich wieder zum Draht zeigen und ihn nochmal
+  kreuzen — genau dieses „Herantasten" sieht man bei echten Mährobotern auch.
 - Beide Spulen draußen → der ganze Roboter ist aus der Schleife heraus. Dann
   **hält er an** — genau wie ein echter Mähroboter, der seine Grenze verliert.
   Man kann ihn dann einfach zurück auf den Rasen ziehen (siehe *Den Roboter

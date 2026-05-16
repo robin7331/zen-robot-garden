@@ -113,15 +113,12 @@ export const DRIVE = {
   dockDropRadius: 0.45, // m — Fang-Radius: wird der Roboter so nah an der Station
   //                       abgesetzt, dockt er an (≈ Stations-Grundfläche)
 
-  // Drehung nach einem Stoß gegen ein Hindernis: ein zufälliger Winkel.
+  // Drehung nach einem Stoß gegen ein Hindernis ODER nach dem Überqueren des
+  // Begrenzungsdrahts: in beiden Fällen ein zufälliger Winkel relativ zum
+  // aktuellen Kurs — wie bei einem echten Mähroboter, der die Draht-Richtung
+  // gar nicht kennt und sich rein auf den Zufall verlässt.
   collisionTurnMin: 1.2, // rad — kleinste Drehung (~69°)
   collisionTurnMax: 3.0, // rad — größte Drehung (~172°)
-
-  // Drehung nach dem Überqueren des Begrenzungsdrahts: wie bei einem echten
-  // Mähroboter ein zufälliger Kurs — kein berechneter Abprall. Der Zufall
-  // streut nur um "geradewegs nach innen" herum, damit der Roboter sicher
-  // wieder ins Feld zeigt; wireTurnSpread ist die maximale Abweichung davon.
-  wireTurnSpread: 1.22, // rad — max. Abweichung von "geradewegs nach innen" (~70°)
 } as const;
 
 /**
@@ -130,16 +127,16 @@ export const DRIVE = {
  * Kreislauf gut sieht; für ruhigeres Zen-Tempo die Werte kleiner machen.
  */
 export const BATTERY = {
-  drain: 0.011, // pro Sekunde beim Fahren — voll -> leer in ~91 s
+  drain: 0.0055, // pro Sekunde beim Fahren — voll -> leer in ~182 s
   charge: 0.08, // pro Sekunde an der Station — fast leer -> voll in ~12 s
   low: 0.3, // ab hier (<= 30 %) sucht der Roboter den Leitdraht und fährt
-  //           heim (~27 s Reserve: deckt eine Heimfahrt plus einen Stoß)
+  //           heim (~55 s Reserve: deckt eine Heimfahrt plus einen Stoß)
   full: 0.99, // ab hier verlässt er die Station wieder
   // Mehr-Verbrauch bergauf: echte Motoren ziehen unter Last mehr Strom.
   // Zusätzlicher Abzug pro Sekunde, voll wirksam bei der 20°-Maximalsteigung,
   // anteilig zur Bergauf-Komponente. Ein hügeliger Garten schickt den
   // Roboter so etwas früher heim.
-  climbDrain: 0.03, // pro Sekunde extra bei voller Bergauf-Fahrt
+  climbDrain: 0.015, // pro Sekunde extra bei voller Bergauf-Fahrt
   // Das Mäh-Messer ist der große Stromfresser. Läuft es nicht (Heimfahrt zum
   // Leitdraht, Ausfahren aus der Station), zieht der Roboter nur diesen
   // Bruchteil des normalen Verbrauchs.
@@ -153,7 +150,7 @@ export const BATTERY = {
  */
 export const GRASS = {
   cellSize: 0.1, // m — Kantenlänge eines Gitter-Felds (8x6 m -> 80x60 Felder)
-  regrowTime: 300, // s — mittlere Zeit von frisch gemäht (0) bis voll (1)
+  regrowTime: 600, // s — mittlere Zeit von frisch gemäht (0) bis voll (1)
   // Streuung des Nachwachs-Tempos: jedes Feld bekommt beim Mähen ein eigenes,
   // zufälliges Tempo. 0.6 -> ein Feld wächst zwischen 0.4x und 1.6x so schnell
   // wie der Schnitt. So füllt sich die Mähspur ungleichmäßig und natürlich auf

@@ -2,12 +2,8 @@ import * as THREE from 'three';
 import * as RAPIER from '@dimforge/rapier3d-compat';
 import { SIZES, DRIVE, BATTERY, SUSPENSION, TERRAIN } from './tokens';
 import { GROUP, collisionGroups } from './physics';
-import { BOUNDARY, LEITDRAHT, insideWire } from './wire';
-import {
-  carrotTowardStart,
-  outwardNormal,
-  signedDistanceToPolyline,
-} from './polyline';
+import { LEITDRAHT, insideWire } from './wire';
+import { carrotTowardStart, signedDistanceToPolyline } from './polyline';
 import { heightAt, normalAt } from './terrain';
 import type { RobotActivity } from './ui';
 
@@ -43,8 +39,12 @@ import type { RobotActivity } from './ui';
  *
  * Zwei Spulen-Sensoren (vorne/hinten) "spüren", ob sie INNERHALB des
  * Begrenzungsdrahts sind:
- *   - Vordere Spule draußen -> die Nase hat den Draht überquert -> zurück +
- *     vom Draht wegdrehen.
+ *   - Vordere Spule draußen -> die Nase hat den Draht überquert ->
+ *     zurücksetzen + zufällig drehen, genau wie nach einem Stoß. Eine echte
+ *     Drahtspule liefert nur "innen/draußen", keine Richtung — der Roboter
+ *     kann also nicht gezielt nach innen lenken, sondern verlässt sich wie
+ *     ein echter Mähroboter auf den Zufall (und kreuzt an Ecken auch mal
+ *     mehrmals kurz hintereinander).
  *   - Beide Spulen draußen -> der ganze Roboter ist heraus -> anhalten.
  *
  * == Wie der Roboter heimfindet (der Leitdraht) ==
@@ -633,8 +633,9 @@ export class RobotController {
         return;
       }
       if (!this.frontInside) {
-        // Vordere Spule hat den Draht überquert -> abkehren.
-        this.startReaction(this.computeWireTurnTarget(), this.state);
+        // Vordere Spule hat den Draht überquert -> zurücksetzen + zufällig
+        // drehen, exakt dieselbe Reaktion wie bei einem Stoß.
+        this.startReaction(this.randomTurnTarget(), this.state);
       }
     }
 
@@ -766,7 +767,12 @@ export class RobotController {
     this.resumeState = resume;
   }
 
-  /** Zufälliger Ziel-Kurs nach einem Stoß (oder beim Verlassen der Station). */
+  /**
+   * Zufälliger Ziel-Kurs relativ zum aktuellen Kurs — verwendet nach einem
+   * Stoß, nach einer Begrenzungsdraht-Überquerung und beim Verlassen der
+   * Station. Wie bei einem echten Mähroboter ist die Drehung reiner Zufall;
+   * sie zeigt nicht zwingend ins Feld zurück.
+   */
   private randomTurnTarget(): number {
     const amount = THREE.MathUtils.lerp(
       DRIVE.collisionTurnMin,
@@ -775,23 +781,6 @@ export class RobotController {
     );
     const dir = Math.random() < 0.5 ? -1 : 1;
     return wrapPi(this.currentYaw() + dir * amount);
-  }
-
-  /**
-   * Ziel-Kurs nach einer Begrenzungsdraht-Überquerung.
-   *
-   * Wie ein echter Mähroboter: kein berechneter Abprall, sondern ein
-   * zufälliger neuer Kurs. Der einzige Zwang ist, dass der Roboter wieder
-   * ins Feld zeigen muss — darum streut der Zufall nur um "geradewegs nach
-   * innen" herum (± wireTurnSpread).
-   */
-  private computeWireTurnTarget(): number {
-    // Nach-innen zeigende Richtung am überquerten Draht-Segment.
-    const n = outwardNormal(BOUNDARY, this.senseFrontX, this.senseFrontZ);
-    const inwardYaw = Math.atan2(-n.x, -n.z);
-    // Zufällige Abweichung davon, begrenzt -> der Roboter zeigt klar ins Feld.
-    const dev = (Math.random() * 2 - 1) * DRIVE.wireTurnSpread;
-    return wrapPi(inwardYaw + dev);
   }
 
   /** Hält den Roboter an (aus der Draht-Schleife entkommen). */
