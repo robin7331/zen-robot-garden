@@ -14,8 +14,12 @@ export const COLORS = {
   sun: '#fff4e0', // Sonnenlicht, leicht warm
   ambient: '#b9c8dd', // Füll-Licht, Himmel-Blau-Tönung
 
-  // Welt
-  grass: '#618f3d', // Rasen-Oberseite (langes Gras, dunklere Stufe)
+  // Welt — Rasen-Farbstufen: hell = frisch gemäht, dunkel = voll nachgewachsen.
+  // Diese vier Töne sind zugleich die Anzeige-Stufen des Mäh-Gitters (mowGrid).
+  grassMown: '#a8c66c', // Stufe 0 — frisch gemäht (hellster Ton)
+  grassShort: '#8aab57', // Stufe 1 — kurz, wächst nach
+  grassMid: '#739848', // Stufe 2 — mittel
+  grass: '#618f3d', // Stufe 3 — voll nachgewachsen (dunkelster Ton)
   soil: '#6b4a2f', // Erd-Band unter dem Rasen
   rock: '#5f5953', // Fels-Schicht darunter
   twig: '#5a4327', // Ästchen — trockenes, holziges Braun
@@ -93,6 +97,17 @@ export const BATTERY = {
   low: 0.5, // ab hier sucht der Roboter den Leitdraht und fährt heim
   //            (~23 s Reserve: deckt eine Heimfahrt plus einen Stoß)
   full: 0.99, // ab hier verlässt er die Station wieder
+} as const;
+
+/**
+ * Mäh-Gitter — das unsichtbare Raster aus kleinen Feldern über dem Rasen.
+ * Jedes Feld merkt sich die Grashöhe (0 = frisch gemäht, 1 = voll
+ * nachgewachsen). Siehe mowGrid.ts. Alle Werte einstellbar.
+ */
+export const GRASS = {
+  cellSize: 0.1, // m — Kantenlänge eines Gitter-Felds (8x6 m -> 80x60 Felder)
+  regrowTime: 180, // s — von frisch gemäht (0) bis voll nachgewachsen (1)
+  cutRadius: 0.2, // m — Radius der Mäh-Scheibe um den Roboter-Mittelpunkt
 } as const;
 
 /**

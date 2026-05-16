@@ -8,6 +8,7 @@ import {
   updateControls,
 } from './camera';
 import { createGarden } from './garden';
+import { MowGrid } from './mowGrid';
 import { createWireMeshes } from './wire';
 import { createRobot } from './models/robot';
 import { initPhysics, createWorld, addGround } from './physics';
@@ -39,6 +40,11 @@ async function main(): Promise<void> {
   scene.add(createGarden());
   // Sichtbare Drähte: Begrenzungsdraht (Schleife) + Leitdraht (Heimweg).
   scene.add(createWireMeshes());
+
+  // Mäh-Gitter: die Rasen-Fläche, die sich verändert. Der Roboter mäht sie
+  // kurz, überall wächst das Gras langsam nach (Farbe = Grashöhe).
+  const mowGrid = new MowGrid();
+  scene.add(mowGrid.mesh);
 
   // Physik-Welt + Boden. Die Rasen-Grenze ist der Begrenzungsdraht (wire.ts),
   // keine Wand — der Roboter spürt ihn mit seinen Spulen-Sensoren.
@@ -188,6 +194,14 @@ async function main(): Promise<void> {
 
     controller.sync(frameDt); // Physik-Pose ins Sicht-Modell übernehmen
     twigField.sync(); // Ästchen mitbewegen
+
+    // Mäh-Gitter: wo der Roboter mäht, wird das Gras kurz; überall wächst es
+    // nach. Gemäht wird nur, wenn die Klingen wirklich laufen (nicht beim
+    // Heimfahren, Laden, Anhalten oder Gezogenwerden).
+    if (controller.activity === 'mowing') {
+      mowGrid.cutAt(robot.position.x, robot.position.z);
+    }
+    mowGrid.update(frameDt);
     batteryUI.update(controller.batteryLevel, controller.activity);
 
     // Lade-Leuchte: pulsiert sanft, solange der Roboter andockt und lädt.

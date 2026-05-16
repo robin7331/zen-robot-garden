@@ -269,7 +269,12 @@ export class RobotController {
     return this.state === 'held';
   }
 
-  /** Grobe Tätigkeit für die UI-Anzeige (Stoßen/Drehen zählt als Mähen). */
+  /**
+   * Grobe Tätigkeit für UI-Anzeige und Mäh-Gitter. Der Roboter mäht beim
+   * Fahren — auch beim Zurücksetzen und Drehen am Begrenzungsdraht. Allein
+   * auf der Heimfahrt mäht er gar nicht (weder geradeaus noch in der Kurve):
+   * dort kehrt eine Ausweich-Reaktion in 'seeking' zurück statt in 'driving'.
+   */
   get activity(): RobotActivity {
     switch (this.state) {
       case 'charging':
@@ -284,8 +289,11 @@ export class RobotController {
         return 'stopped';
       case 'held':
         return 'held';
+      case 'backing':
+      case 'turning':
+        return this.resumeState === 'driving' ? 'mowing' : 'seeking';
       default:
-        return 'mowing'; // driving / backing / turning
+        return 'mowing'; // driving
     }
   }
 
@@ -354,13 +362,17 @@ export class RobotController {
     }
   }
 
-  /** Mäht der Roboter gerade? Klingen an nur in driving / backing / turning. */
+  /**
+   * Mäht der Roboter gerade? Klingen an beim Fahren und beim Zurücksetzen/
+   * Drehen am Draht — Drehen mäht also mit. Nur auf der Heimfahrt bleiben sie
+   * ganz aus (die Reaktion kehrt in 'seeking' zurück, nicht in 'driving').
+   */
   private bladesOn(): boolean {
-    return (
-      this.state === 'driving' ||
-      this.state === 'backing' ||
-      this.state === 'turning'
-    );
+    if (this.state === 'driving') return true;
+    if (this.state === 'backing' || this.state === 'turning') {
+      return this.resumeState === 'driving';
+    }
+    return false;
   }
 
   // — Ziehen ("drag and drop") ———————————————————————————————————————
