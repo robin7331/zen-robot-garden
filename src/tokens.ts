@@ -104,7 +104,12 @@ export const BATTERY = {
  */
 export const GRASS = {
   cellSize: 0.1, // m — Kantenlänge eines Gitter-Felds (8x6 m -> 80x60 Felder)
-  regrowTime: 180, // s — von frisch gemäht (0) bis voll nachgewachsen (1)
+  regrowTime: 600, // s — mittlere Zeit von frisch gemäht (0) bis voll (1)
+  // Streuung des Nachwachs-Tempos: jedes Feld bekommt beim Mähen ein eigenes,
+  // zufälliges Tempo. 0.6 -> ein Feld wächst zwischen 0.4x und 1.6x so schnell
+  // wie der Schnitt. So füllt sich die Mähspur ungleichmäßig und natürlich auf
+  // statt überall exakt gleichzeitig. 0 = wieder überall gleich schnell.
+  regrowVariation: 0.6,
   cutRadius: 0.2, // m — Radius der Mäh-Scheibe um den Roboter-Mittelpunkt
 } as const;
 

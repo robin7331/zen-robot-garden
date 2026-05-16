@@ -59,15 +59,23 @@ export class MowGrid {
 
   // Grashöhe je Feld, 0..1. Index = cx + cz * CELLS_X.
   private readonly heights = new Float32Array(CELL_COUNT);
+  // Nachwachs-Tempo je Feld als Anteil pro Sekunde. Jedes Feld bekommt beim
+  // Mähen ein eigenes, zufälliges Tempo (siehe randomRate) — so füllt sich die
+  // Mähspur natürlich-ungleichmäßig auf statt überall exakt gleichzeitig.
+  private readonly cellRate = new Float32Array(CELL_COUNT);
   // Pixel-Puffer der Textur (RGBA, genau ein Pixel je Feld).
   private readonly pixels = new Uint8Array(CELL_COUNT * 4);
   private readonly texture: THREE.DataTexture;
-  // Nachwachs-Tempo als Anteil pro Sekunde (0 -> 1 in GRASS.regrowTime).
-  private readonly regrowRate = 1 / GRASS.regrowTime;
+  // Mittleres Nachwachs-Tempo als Anteil pro Sekunde (0 -> 1 in regrowTime).
+  private readonly meanRate = 1 / GRASS.regrowTime;
 
   constructor() {
-    // Start: der ganze Rasen ist voll nachgewachsen (Höhe 1).
+    // Start: der ganze Rasen ist voll nachgewachsen (Höhe 1). Jedes Feld
+    // bekommt schon mal ein zufälliges Tempo für sein erstes Nachwachsen.
     this.heights.fill(1);
+    for (let i = 0; i < CELL_COUNT; i++) {
+      this.cellRate[i] = this.randomRate();
+    }
 
     // DataTextur: ein Pixel je Feld. NearestFilter -> scharfe Quadrate statt
     // weichem Verlauf. Keine Mipmaps nötig (Textur wird nie verkleinert).
@@ -118,23 +126,36 @@ export class MowGrid {
       for (let cx = minCx; cx <= maxCx; cx++) {
         const dx = this.cellCenterX(cx) - x;
         if (dx * dx + dz * dz <= r2) {
-          this.heights[cx + cz * CELLS_X] = 0;
+          const i = cx + cz * CELLS_X;
+          this.heights[i] = 0;
+          // Frisch gemäht -> neues Zufalls-Tempo für dieses Nachwachsen.
+          this.cellRate[i] = this.randomRate();
         }
       }
     }
   }
 
   /**
-   * Lässt das Gras überall gleichmäßig nachwachsen und malt die Textur neu.
-   * Einmal pro gerendertem Bild mit der Bild-Zeitspanne aufrufen.
+   * Lässt das Gras nachwachsen — jedes Feld mit SEINEM eigenen Tempo — und
+   * malt die Textur neu. Einmal pro gerendertem Bild mit der Bild-Zeitspanne
+   * aufrufen.
    */
   update(dt: number): void {
-    const grow = this.regrowRate * dt;
     for (let i = 0; i < CELL_COUNT; i++) {
-      const h = this.heights[i] + grow;
+      const h = this.heights[i] + this.cellRate[i] * dt;
       this.heights[i] = h < 1 ? h : 1; // bei voll nachgewachsen deckeln
     }
     this.redraw();
+  }
+
+  /**
+   * Würfelt ein Nachwachs-Tempo um den Schnitt meanRate herum aus. Die
+   * Streuung steuert GRASS.regrowVariation: 0 -> immer der Schnitt, 0.6 ->
+   * 0.4x .. 1.6x. So braucht jedes Feld unterschiedlich lang, bis es voll ist.
+   */
+  private randomRate(): number {
+    const factor = 1 + (Math.random() * 2 - 1) * GRASS.regrowVariation;
+    return this.meanRate * factor;
   }
 
   /** Schreibt für jedes Feld die Stufen-Farbe in den Pixel-Puffer. */
