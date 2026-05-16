@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as RAPIER from '@dimforge/rapier3d-compat';
 import { createTwigMesh, TWIG_LENGTH, TWIG_RADIUS } from './models/twig';
 import { GROUP, collisionGroups } from './physics';
+import { heightAt } from './terrain';
 
 /**
  * Verwaltet alle Ästchen im Garten.
@@ -12,7 +13,7 @@ import { GROUP, collisionGroups } from './physics';
  * darüberfahren, es wegschieben oder daran hängen bleiben.
  */
 
-/** Höhe, in der ein neues Ästchen erscheint (m über dem Boden). */
+/** Höhe, in der ein neues Ästchen erscheint (m über dem Gelände). */
 const SPAWN_HEIGHT = 0.3;
 /** Gewicht eines Ästchens (kg) — leicht, aber nicht federleicht. */
 const TWIG_MASS = 0.12;
@@ -30,8 +31,9 @@ export class TwigField {
     private readonly scene: THREE.Scene,
   ) {}
 
-  /** Lässt an der Stelle (x, z) ein neues Ästchen aus 30 cm Höhe fallen. */
+  /** Lässt an der Stelle (x, z) ein neues Ästchen 30 cm über dem Gelände fallen. */
   spawn(x: number, z: number): void {
+    const spawnY = heightAt(x, z) + SPAWN_HEIGHT;
     // Zufällige Lage — so liegt kein Ästchen wie das andere.
     const rot = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(
@@ -43,7 +45,7 @@ export class TwigField {
 
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, SPAWN_HEIGHT, z)
+        .setTranslation(x, spawnY, z)
         .setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w })
         .setLinearDamping(0.4)
         .setAngularDamping(0.6),

@@ -58,6 +58,36 @@ export const SIZES = {
 } as const;
 
 /**
+ * Gelände (3D-Terrain) — die Höhenkarte unter dem Rasen (siehe terrain.ts).
+ *
+ * Der Rasen ist nicht mehr flach: sanft gewellte Hügel und Mulden. Eine
+ * editierbare Float32Array-Höhenkarte ist die einzige Wahrheit; alles andere
+ * (Sicht-Meshes, Collider, Höhen-Textur) wird daraus abgeleitet. So kann
+ * später eine Terraforming-Pinsel-UI einfach dazukommen.
+ */
+export const TERRAIN = {
+  cellSize: 0.25, // m — Raster-Zellgröße (8x6 m -> 33x25 Stützpunkte). Bewusst
+  //                 gröber als das 0,1-m-Mäh-Gitter — große, sanfte Hügel.
+  seed: 20260516, // fester Seed -> der Garten sieht bei jedem Laden gleich aus
+  maxSlopeDeg: 20, // ° — auf diese Steigung wird das Rausch-Erzeugen gedeckelt
+  //                  (immer kletterbar, kippt nie von allein)
+  reliefAmplitude: 0.4, // m — Ziel-Relief ±0,4 m vor der Steigungs-Deckelung
+} as const;
+
+/**
+ * Rad-Federung des Raycast-Fahrzeugs (siehe robotController.ts). Der Roboter-
+ * Körper schwebt auf vier abgetasteten Rad-Punkten; je Rad drückt eine Feder
+ * den Körper nach oben. Verschieden tiefe Einfederung -> der Körper neigt sich
+ * von selbst in Nick- und Rollachse.
+ */
+export const SUSPENSION = {
+  restLength: 0.03, // m — Ruhe-Federweg (Rad-Anker über dem Boden)
+  stiffness: 1600, // N/m — Federkonstante je Rad
+  damping: 75, // N pro m/s — Dämpfung der senkrechten Rad-Geschwindigkeit
+  maxForce: 260, // N — Obergrenze der Federkraft je Rad (kein Aufschaukeln)
+} as const;
+
+/**
  * Fahr-Werte des Roboters — bewusst einstellbar (siehe CLAUDE.md).
  * Wer dem Roboter ein anderes Fahrgefühl geben will, ändert es hier.
  */
@@ -96,6 +126,11 @@ export const BATTERY = {
   low: 0.3, // ab hier (<= 30 %) sucht der Roboter den Leitdraht und fährt
   //           heim (~27 s Reserve: deckt eine Heimfahrt plus einen Stoß)
   full: 0.99, // ab hier verlässt er die Station wieder
+  // Mehr-Verbrauch bergauf: echte Motoren ziehen unter Last mehr Strom.
+  // Zusätzlicher Abzug pro Sekunde, voll wirksam bei der 20°-Maximalsteigung,
+  // anteilig zur Bergauf-Komponente. Ein hügeliger Garten schickt den
+  // Roboter so etwas früher heim.
+  climbDrain: 0.03, // pro Sekunde extra bei voller Bergauf-Fahrt
 } as const;
 
 /**

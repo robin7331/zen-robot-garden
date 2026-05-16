@@ -20,6 +20,7 @@ import {
   STATION,
 } from './models/chargingStation';
 import { SIZES } from './tokens';
+import { heightAt, normalAt, raycastTerrain } from './terrain';
 import { createBatteryUI, createFpsUI } from './ui';
 
 /**
@@ -52,12 +53,24 @@ async function main(): Promise<void> {
   const world = createWorld();
   addGround(world);
 
-  // Ladestation an der rechten Rasenkante, Öffnung zum Rasen hin.
-  const stationPos = new THREE.Vector3(3.6, 0, -1.6);
+  // Ladestation an der rechten Rasenkante, Öffnung zum Rasen hin. Sie steht
+  // auf dem Hang: auf die Geländehöhe gehoben und zur Gelände-Normale geneigt
+  // (kein flaches Podest — konsequent zur Vollphysik).
   const stationYaw = -Math.PI / 2;
+  const stationPos = new THREE.Vector3(3.6, 0, -1.6);
+  stationPos.y = heightAt(stationPos.x, stationPos.z);
   const station = await createChargingStationMesh();
   station.position.copy(stationPos);
-  station.rotation.y = stationYaw;
+  {
+    // Drehung: Hochachse auf die Gelände-Normale, dazu der Stations-Yaw.
+    const up = normalAt(stationPos.x, stationPos.z);
+    const fwd = new THREE.Vector3(Math.sin(stationYaw), 0, Math.cos(stationYaw));
+    fwd.addScaledVector(up, -fwd.dot(up)).normalize();
+    const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
+    station.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(right, up, fwd),
+    );
+  }
   scene.add(station);
 
   // Grundfläche der Station (Welt-Rechteck XZ) — darunter wächst kein Gras.
@@ -82,9 +95,10 @@ async function main(): Promise<void> {
   const grassField = new GrassField(mowGrid, [stationArea]);
   scene.add(grassField.mesh);
 
-  // Andock-Punkt (Weltkoordinaten): kurz vor der Rückwand der Station.
+  // Andock-Punkt (Weltkoordinaten): kurz vor der Rückwand der Station, mit
+  // der (geneigten) Stations-Pose mitgedreht.
   const dock = new THREE.Vector3(0, 0, STATION.dockLocalZ)
-    .applyAxisAngle(new THREE.Vector3(0, 1, 0), stationYaw)
+    .applyQuaternion(station.quaternion)
     .add(stationPos);
 
   // Lade-Leuchte der Station — wird pro Bild auf/aus geschaltet.
@@ -121,8 +135,6 @@ async function main(): Promise<void> {
   // Position beim Drücken und prüfen beim Loslassen, ob sie sich kaum bewegt.
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  const hitPoint = new THREE.Vector3();
   let downX = 0;
   let downY = 0;
   let draggingRobot = false;
@@ -152,9 +164,9 @@ async function main(): Promise<void> {
     if (!draggingRobot) return;
     setPointer(e);
     raycaster.setFromCamera(pointer, camera);
-    if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
-      controller.dragTo(hitPoint.x, hitPoint.z);
-    }
+    // Der Zieh-Strahl tastet das gewellte Gelände ab (keine flache Ebene mehr).
+    const hit = raycastTerrain(raycaster.ray.origin, raycaster.ray.direction);
+    if (hit) controller.dragTo(hit.x, hit.z);
   });
 
   renderer.domElement.addEventListener('pointerup', (e) => {
@@ -170,19 +182,20 @@ async function main(): Promise<void> {
     const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
     if (moved > 6) return; // war ein Ziehen (Kamera), kein Klick
 
-    // Wo der Strahl die Boden-Ebene trifft, kommt das Ästchen hin.
+    // Wo der Strahl das Gelände trifft, kommt das Ästchen hin.
     setPointer(e);
     raycaster.setFromCamera(pointer, camera);
-    if (!raycaster.ray.intersectPlane(groundPlane, hitPoint)) return;
+    const hit = raycastTerrain(raycaster.ray.origin, raycaster.ray.direction);
+    if (!hit) return;
 
     // Nur Klicks auf dem Rasen zählen.
     if (
-      Math.abs(hitPoint.x) > SIZES.lawnWidth / 2 ||
-      Math.abs(hitPoint.z) > SIZES.lawnDepth / 2
+      Math.abs(hit.x) > SIZES.lawnWidth / 2 ||
+      Math.abs(hit.z) > SIZES.lawnDepth / 2
     ) {
       return;
     }
-    twigField.spawn(hitPoint.x, hitPoint.z);
+    twigField.spawn(hit.x, hit.z);
   });
 
   // Fenstergröße ändern: Renderer und Kamera-Frustum anpassen.

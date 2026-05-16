@@ -90,6 +90,22 @@ export async function createRobot(): Promise<THREE.Group> {
     wheels.sort((a, b) => worldX(a) - worldX(b));
     wheels[0].name = 'wheelLeft'; // kleineres X = links
     wheels[1].name = 'wheelRight';
+
+    // — Dreh-Achse je Rad bestimmen. Ein Rad rollt um die QUER-Achse des
+    //   Roboters (Spiel-X). Wie diese Achse im LOKALEN Koordinatensystem des
+    //   Rad-Knotens liegt, hängt davon ab, wie das Rad in Blender ausgerichtet
+    //   wurde — `rotation.x` wäre also blind geraten. Darum rechnen wir die
+    //   Spiel-X-Achse aus der Welt-Drehung des Rades in dessen lokalen Frame
+    //   zurück (die `robot`-Gruppe ist hier noch ungedreht, also Spiel-X =
+    //   Welt-X). Der RobotController dreht das Rad mit `rotateOnAxis` um genau
+    //   diese gespeicherte Achse. —
+    for (const w of wheels) {
+      const q = new THREE.Quaternion();
+      w.getWorldQuaternion(q);
+      w.userData.spinAxis = new THREE.Vector3(1, 0, 0)
+        .applyQuaternion(q.invert())
+        .normalize();
+    }
   }
 
   // Jedes Mesh wirft und empfängt Schatten.

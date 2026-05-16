@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { COLORS, SIZES, LEITDRAHT_NAILS } from './tokens';
 import { insidePolygon, type Nail, type Polyline } from './polyline';
+import { heightAt } from './terrain';
 
 /**
  * Die Drähte im Rasen — beide auf demselben Nagel-Polylinien-Primitiv
@@ -59,8 +60,11 @@ export function insideWire(x: number, z: number): boolean {
 
 // — Sichtbare Drähte ——————————————————————————————————————————————————
 
-/** Höhe der Draht-Linien knapp über dem Rasen (y = 0) — kein Z-Fighting. */
+/** Höhe der Draht-Linien knapp über dem Gelände — kein Z-Fighting. */
 const WIRE_Y = 0.012;
+
+/** Schrittweite, mit der ein Draht-Segment über das Gelände unterteilt wird. */
+const DRAPE_STEP = 0.2;
 
 const wireMaterial = new THREE.LineBasicMaterial({
   color: new THREE.Color(COLORS.wire),
@@ -75,19 +79,45 @@ const nailMaterial = new THREE.MeshStandardMaterial({
   metalness: 0,
 });
 
-/** Zeichnet eine Polylinie als dünne Linie nach (Schleife oder offen). */
+/**
+ * Zeichnet eine Polylinie als dünne Linie nach (Schleife oder offen). Jedes
+ * Segment wird unterteilt und jeder Zwischenpunkt auf die Geländehöhe gelegt —
+ * so drapiert die Linie sauber über Hügel, statt durch sie zu schneiden.
+ */
 function createPolylineMesh(poly: Polyline): THREE.Object3D {
-  const points = poly.nails.map((n) => new THREE.Vector3(n.x, WIRE_Y, n.z));
+  const n = poly.nails.length;
+  const segCount = poly.closed ? n : n - 1;
+  const points: THREE.Vector3[] = [];
+  for (let s = 0; s < segCount; s++) {
+    const a = poly.nails[s];
+    const b = poly.nails[(s + 1) % n];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const steps = Math.max(1, Math.round(len / DRAPE_STEP));
+    // Anfangspunkt jedes Segments setzen, Endpunkt überlässt das nächste
+    // Segment (bzw. bei offener Linie zuletzt explizit unten).
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      const x = a.x + (b.x - a.x) * t;
+      const z = a.z + (b.z - a.z) * t;
+      points.push(new THREE.Vector3(x, heightAt(x, z) + WIRE_Y, z));
+    }
+  }
+  if (!poly.closed) {
+    const last = poly.nails[n - 1];
+    points.push(
+      new THREE.Vector3(last.x, heightAt(last.x, last.z) + WIRE_Y, last.z),
+    );
+  }
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
   return poly.closed
     ? new THREE.LineLoop(geometry, wireMaterial)
     : new THREE.Line(geometry, wireMaterial);
 }
 
-/** Ein kleiner Punkt an der Stelle eines Nagels. */
+/** Ein kleiner Punkt an der Stelle eines Nagels, auf die Geländehöhe gesetzt. */
 function createNailDot(nail: Nail): THREE.Mesh {
   const dot = new THREE.Mesh(nailGeometry, nailMaterial);
-  dot.position.set(nail.x, WIRE_Y, nail.z);
+  dot.position.set(nail.x, heightAt(nail.x, nail.z) + WIRE_Y, nail.z);
   dot.castShadow = true;
   return dot;
 }

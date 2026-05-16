@@ -135,7 +135,7 @@ Echte Einheiten (cm / m). Startwerte — im Code feinjustierbar.
 
 | Element | Maß | Anmerkung |
 |---|---|---|
-| Rasen | **8 m × 6 m** | leicht rechteckig, flach |
+| Rasen | **8 m × 6 m** | rechteckig, sanft gewelltes Gelände (~±0,4 m) |
 | Roboter | **60 cm lang · 45 cm breit · 25 cm hoch** | echter Mähroboter-Maßstab |
 | Antriebsräder | **Ø 20 cm** | zwei Stück, seitlich |
 | Gras lang | **10 cm** | ungemäht — dichter Teppich |
@@ -144,24 +144,26 @@ Echte Einheiten (cm / m). Startwerte — im Code feinjustierbar.
 | Haus | **3 m × 3 m Grundfläche · 3,5 m First-Höhe** | |
 | Baum | **5 m hoch · Krone Ø ~3,5 m** | |
 | Pflanze / Strauch | **50 cm hoch** | |
-| Slab: Erd-Band | **30 cm** | direkt unter dem Rasen |
-| Slab: Fels-Schicht | **70 cm** | darunter, franst zackig aus |
+| Erd-Band | **30 cm** | direkt unter der Gras-Decke (Wand-Band) |
+| Fels-Schicht | **70 cm** | darunter, bis zum flachen Boden des Blocks |
 
 **Logik:** Langes Gras (10 cm) reicht dem 25-cm-Roboter bis ~40 % seiner Höhe —
 gut sichtbar, klar überfahrbar, und wird auf ~2,6 cm heruntergemäht. Der scharfe
 Höhen-Absatz dazwischen ist das Hauptsignal der Mähspur. Der 8-m-Rasen fasst gut
 13 Roboter-Längen → genug Platz zum Fahren und Mähen.
 
-## Der Slab (die Diorama-Box)
+## Der Diorama-Block
 
-- **Rechteckig.** Oberseite = flacher Rasen (Hügel/Gelände kommen laut `CLAUDE.md`
-  erst später).
-- **Seiten zweischichtig:** oben das dünne `soil`-Erd-Band, darunter die dickere
-  `rock`-Fels-Schicht.
-- **Obere Kanten sauber rechteckig**, nach unten **franst der Fels zackig aus** —
-  der "aus dem Boden gerissen / schwebende Insel"-Look.
-- **Gras-Lippe:** Der Rasen ragt ein kleines Stück über die obere Kante hinaus,
-  das Gras "hängt über".
+- **Gewellte Oberseite:** Der Rasen ist ein sanft gewelltes **3D-Gelände** —
+  Hügel und Mulden statt einer flachen Platte (siehe `terrain.ts`). Maximale
+  Steigung ca. 20°, Gesamt-Relief ~±0,4 m.
+- **Gras-Decke:** ein unterteiltes, höhenverschobenes Mesh, **flat-shaded** —
+  kantige Low-Poly-Hügel, passt zum Origami-Look.
+- **Seitenwände** sind senkrechte Schnitte: ihre Oberkante folgt dem Gelände,
+  der Boden ist flach. Sie zeigen drei waagerechte Bänder — dünnes Gras, dann
+  das `soil`-Erd-Band, dann die `rock`-Fels-Schicht: ein Geländequerschnitt.
+- **Gras-Lippe:** Die Gras-Decke ragt ein kleines Stück über die Wand-Oberkante
+  hinaus, das Gras "hängt über".
 
 ## Der Rasen & das Gras
 
@@ -203,6 +205,31 @@ Höhen-Textur des Gitters. Startwerte, im Code (`tokens.ts`) feinjustierbar.
 Wo der Roboter steht, klappen die Halme **platt** und richten sich danach
 langsam wieder auf. Die Halme werfen/empfangen **keine Schatten** — die
 Farb-Ebene darunter trägt sie. Sie scheint zwischen den Halmen durch.
+
+## Gelände (`TERRAIN`, `SUSPENSION`)
+
+Der Rasen ist ein sanft gewelltes 3D-Gelände (`terrain.ts`). Eine editierbare
+Höhenkarte ist die einzige Wahrheit; Sicht-Meshes, Physik-Collider und die
+Höhen-Textur des Gras-Shaders werden daraus abgeleitet. Startwerte, im Code
+(`tokens.ts`) feinjustierbar.
+
+| Token | Wert | Was |
+|---|---|---|
+| `TERRAIN.cellSize` | **0,25 m** | Raster-Zellgröße (8×6 m → 33×25 Stützpunkte) |
+| `TERRAIN.seed` | fest | Seed des Start-Rauschens — gleicher Garten bei jedem Laden |
+| `TERRAIN.maxSlopeDeg` | **20°** | Steigungs-Deckelung (immer kletterbar, kippt nie) |
+| `TERRAIN.reliefAmplitude` | **0,4 m** | Ziel-Relief ±0,4 m vor der Deckelung |
+
+Der Roboter ist ein **Raycast-Fahrzeug**: sein Körper schwebt auf vier
+abgetasteten Rad-Punkten, je Rad eine Feder.
+
+| Token | Wert | Was |
+|---|---|---|
+| `SUSPENSION.restLength` | **3 cm** | Ruhe-Federweg (Rad-Anker über dem Boden) |
+| `SUSPENSION.stiffness` | **1600 N/m** | Federkonstante je Rad |
+| `SUSPENSION.damping` | **75** | Dämpfung der senkrechten Rad-Geschwindigkeit |
+| `SUSPENSION.maxForce` | **260 N** | Obergrenze der Federkraft je Rad |
+| `BATTERY.climbDrain` | **0,03 /s** | Akku-Mehrverbrauch bei voller Bergauf-Fahrt |
 
 ## Der Roboter
 
@@ -299,5 +326,6 @@ Notiert, damit es nicht vergessen wird — aber jetzt noch nicht Teil des Stils:
   der Garten aktuell nicht.
 - **Blühende** Bäume/Sträucher als optionale Deko.
 - Deko-Objekte (z.B. Trittsteine, Tonkrüge, kleiner Zaun).
-- **Hügel / Gelände** statt flachem Rasen (siehe `CLAUDE.md`).
+- **Terraforming** — Hügel mit einem Pinsel selbst formen (das gewellte
+  Gelände selbst ist erledigt, siehe `CLAUDE.md`).
 - Detailliertere Modelle — der Flat-Shaded-Low-Poly-Stil bleibt aber bestehen.

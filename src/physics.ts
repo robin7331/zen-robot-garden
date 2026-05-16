@@ -1,5 +1,5 @@
 import * as RAPIER from '@dimforge/rapier3d-compat';
-import { SIZES } from './tokens';
+import { terrainData } from './terrain';
 
 /**
  * Die Physik-Grundlage (Rapier).
@@ -8,7 +8,12 @@ import { SIZES } from './tokens';
  * das Anstoßen von Körpern. Hier richten wir die Welt ein und stellen den
  * Boden auf.
  *
- * Die Rasen-Grenze ist KEINE Wand mehr, sondern der Begrenzungsdraht (siehe
+ * Der Boden ist jetzt ein **Höhenfeld-Collider** aus der Gelände-Höhenkarte
+ * (siehe `terrain.ts`) statt eines flachen Quaders — Ästchen rollen damit die
+ * Hänge hinab. Der Roboter berührt den Boden gar nicht (er schwebt auf seiner
+ * abgetasteten Rad-Federung); nur Ästchen liegen wirklich darauf.
+ *
+ * Die Rasen-Grenze ist KEINE Wand, sondern der Begrenzungsdraht (siehe
  * `wire.ts`): Der Roboter spürt ihn mit seinen Spulen-Sensoren und kehrt um,
  * bevor er irgendwo anstößt. Physische Kollision gibt es nur noch mit echten
  * Hindernissen (Ästchen, später Haus/Baum).
@@ -54,18 +59,25 @@ export function createWorld(): RAPIER.World {
 }
 
 /**
- * Unsichtbarer Boden, Oberseite genau bei y = 0. Darauf fallen die Ästchen.
- * Der Roboter braucht ihn nicht (er ist in der Ebene eingesperrt) — die
- * Kollisions-Gruppe sorgt dafür, dass er den Boden gar nicht erst berührt.
+ * Der Gelände-Boden als **Höhenfeld-Collider** aus der Höhenkarte (terrain.ts).
+ * Darauf liegen und rollen die Ästchen — Hänge hinab, ganz von selbst.
+ *
+ * Rapiers Höhenfeld erwartet die Höhen spaltenweise (Index `i + j*(nrows+1)`,
+ * i entlang X, j entlang Z) — genau so liegt `terrainData.heights`. Das Feld
+ * ist auf die Skala (lawnWidth, 1, lawnDepth) gespannt und mittig zentriert,
+ * also liegt es deckungsgleich unter den Sicht-Meshes.
+ *
+ * Der Roboter braucht den Boden nicht — er schwebt auf seiner Rad-Federung;
+ * die Kollisions-Gruppe (ground stößt nur an twig) sorgt dafür, dass er das
+ * Höhenfeld gar nicht erst berührt.
  */
 export function addGround(world: RAPIER.World): void {
-  const body = world.createRigidBody(
-    RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0),
-  );
-  const collider = RAPIER.ColliderDesc.cuboid(
-    SIZES.lawnWidth / 2,
-    0.5,
-    SIZES.lawnDepth / 2,
+  const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+  const collider = RAPIER.ColliderDesc.heightfield(
+    terrainData.GX - 1, // nrows — Zellen entlang X
+    terrainData.GZ - 1, // ncols — Zellen entlang Z
+    terrainData.heights,
+    { x: terrainData.width, y: 1, z: terrainData.depth },
   )
     .setFriction(1) // griffiges Gras — Ästchen rollen nicht ewig weiter
     .setCollisionGroups(collisionGroups(GROUP.ground, GROUP.twig));

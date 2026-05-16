@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as RAPIER from '@dimforge/rapier3d-compat';
-import { SIZES, DRIVE, BATTERY } from './tokens';
+import { SIZES, DRIVE, BATTERY, SUSPENSION, TERRAIN } from './tokens';
 import { GROUP, collisionGroups } from './physics';
 import { BOUNDARY, LEITDRAHT, insideWire } from './wire';
 import {
@@ -8,54 +8,50 @@ import {
   outwardNormal,
   signedDistanceToPolyline,
 } from './polyline';
+import { heightAt, normalAt } from './terrain';
 import type { RobotActivity } from './ui';
 
 /**
- * Lässt den Roboter autonom fahren — und zwar wirklich über Reibung.
+ * Lässt den Roboter autonom fahren — und zwar wirklich über Reibung, jetzt als
+ * **Raycast-Fahrzeug** auf dem 3D-Gelände.
  *
- * Der Roboter ist EIN Physik-Körper (ein Quader). Er bewegt sich nicht, weil
- * wir ihn schieben oder "beamen", sondern weil an seinen beiden Rädern
- * Reibungskräfte angreifen:
+ * Der Roboter ist EIN Physik-Quader, der das Gelände aber NICHT mehr berührt
+ * (die Kollisions-Gruppe schließt den Boden aus). Statt dessen schwebt er auf
+ * vier abgetasteten Rad-Punkten:
  *
- *   - Jedes Rad hat einen Motor und "will" sich mit einem bestimmten Tempo
- *     über den Boden abrollen.
- *   - Passt das tatsächliche Boden-Tempo des Rades nicht zum Motor-Tempo
- *     (das nennt man *Schlupf*), entsteht eine Reibungskraft. Die schiebt den
- *     Roboter vorwärts oder bremst ihn.
- *   - Quer zur Rollrichtung greifen die Räder stark — darum rutscht der
- *     Roboter nicht seitwärts weg, sondern fährt saubere Kurven.
+ *   - Vier Rad-Anker am Körper-Quader (untere Ecken). Hinten links/rechts sind
+ *     die **Antriebsräder**, vorn an der Nase die **Lenkrollen** (Caster).
+ *   - Je Rad wird die Geländehöhe rechnerisch mit `heightAt` abgetastet. Eine
+ *     Feder drückt den Körper dort nach oben, je nach Einfederung (plus
+ *     Dämpfung). Weil die vier Räder verschieden tief einfedern, neigt sich
+ *     der Körper von selbst in Nick- und Rollachse.
+ *   - Die Antriebsräder bekommen zusätzlich das Schlupf-Reibungs-Modell — aber
+ *     in der **Tangentialebene des Geländes** statt in der flachen XZ-Ebene.
+ *   - Die Lenkrollen liefern NUR Federkraft, keine Horizontalkraft — wie eine
+ *     echte, frei schwenkende Caster-Rolle. So bleibt das Lenken zu 100 %
+ *     Sache des Differentialantriebs.
  *
- * Differentialantrieb: beide Räder gleich schnell -> geradeaus; verschieden
- * schnell -> Kurve; gegenläufig -> Drehung auf der Stelle.
+ * Der Körper hat volle 6 Freiheitsgrade; die Schwerkraft wirkt. Klettern
+ * entsteht so geschenkt aus der Physik: bergauf bremst der Hangabtrieb,
+ * bergab beschleunigt er. Übersteigt der Hangabtrieb die verfügbare Reibung,
+ * rutscht der Roboter — automatisch.
+ *
+ * Die Grenz-Erkennung über die zwei Spulen-Sensoren und das Heimfahren über
+ * den Leitdraht bleiben **reines 2D** (X/Z) — das Gelände ändert nur die Höhe.
  *
  * == Wie der Roboter die Grenze erkennt ==
  *
- * Wie ein echter Mähroboter hat er ZWEI Spulen-Sensoren — einen vorne, einen
- * hinten, beide auf der Längsachse. Jede Spule "spürt", ob sie INNERHALB des
- * Begrenzungsdrahts ist (auf dem Mäh-Rasen) oder schon AUSSERHALB:
- *
- *   - Vordere Spule draußen, hintere drinnen -> die Nase hat den Draht
- *     überquert -> der Roboter setzt zurück und dreht vom Draht weg.
- *   - Beide Spulen draußen -> der ganze Roboter ist aus der Schleife heraus.
- *     Dann hält er an (wie ein echter Mähroboter, der seine Grenze verliert).
+ * Zwei Spulen-Sensoren (vorne/hinten) "spüren", ob sie INNERHALB des
+ * Begrenzungsdrahts sind:
+ *   - Vordere Spule draußen -> die Nase hat den Draht überquert -> zurück +
+ *     vom Draht wegdrehen.
+ *   - Beide Spulen draußen -> der ganze Roboter ist heraus -> anhalten.
  *
  * == Wie der Roboter heimfindet (der Leitdraht) ==
  *
- * Ist der Akku niedrig, schaltet der Roboter auf `seeking`: Klingen aus, er
- * fährt geradeaus weiter (am Begrenzungsdraht prallt er weiter ab) — bis
- * seine vordere Spule den *Leitdraht* überquert. Den erkennt er am Vorzeichen-
- * Wechsel der Distanz zur Leitdraht-Polylinie. Dann folgt er dem Leitdraht
- * per Pure-Pursuit (Vorausschau-Punkt) heim zur Ladestation. Es gibt also
- * keinen "geschummelten" Direktkurs mehr — der Roboter muss den Draht
- * physisch finden und ihm folgen.
- *
- * Daneben gibt es weiter die Stoß-Erkennung für echte Hindernisse (Ästchen,
- * später Haus/Baum): ein physischer Zusammenstoß löst Zurücksetzen + Drehen
- * aus. Draht- und Stoß-System arbeiten unabhängig — wie beim echten Gerät.
- *
- * Damit alles ruhig und stabil bleibt, darf der Körper sich nur in der Ebene
- * bewegen (X/Z) und nur um die Hochachse drehen (Y) — er kann nicht kippen
- * oder abheben. Hügel kommen laut CLAUDE.md sowieso erst später.
+ * Bei niedrigem Akku schaltet er auf `seeking` (Klingen aus), fährt geradeaus
+ * weiter, bis seine vordere Spule den Leitdraht überquert, und folgt ihm dann
+ * per Pure-Pursuit heim zur Ladestation.
  */
 
 // — Roboter-Körper als Physik-Quader ————————————————————————————————
@@ -69,7 +65,8 @@ const ROBOT_MASS = 8; // kg — ungefähr wie ein echter Mähroboter
 // — Rad-Anordnung (lokal zum Roboter; Ursprung am Boden, mittig) ——————————
 const WHEEL_RADIUS = SIZES.wheelDiameter / 2;
 const TRACK_HALF = SIZES.robotWidth / 2; // halber Abstand der beiden Räder
-const WHEEL_Z = -0.06; // Räder sitzen leicht hinter der Mitte
+const WHEEL_Z = -0.06; // Antriebsräder sitzen leicht hinter der Mitte
+const CASTER_Z = SIZES.robotLength / 2 - 0.04; // Lenkrollen nahe der Nase
 
 // — Spulen-Sensoren (lokal; auf der Längsachse, vorne und hinten) ——————————
 const COIL_FRONT_Z = SIZES.robotLength / 2; // vordere Spule an der Nase
@@ -91,8 +88,17 @@ const DOCK_RADIUS = 0.18; // so nah an der Station gilt der Roboter als angedock
 // — Drehen ————————————————————————————————————————————————————————
 const TURN_DONE = 0.1; // rad — so nah am Ziel-Kurs gilt eine Drehung als fertig
 
-// Beim Ziehen darf der Roboter nur so weit, dass sein Körper ganz auf dem
-// Rasen-Slab bleibt (nie über die Kante in die Leere).
+// — Klettern ——————————————————————————————————————————————————————
+// Sinus der Maximalsteigung — bei voller Bergauf-Fahrt zeigt die Roboter-Nase
+// um diesen Y-Anteil nach oben; daran wird der Akku-Mehrverbrauch skaliert.
+const SIN_MAX_SLOPE = Math.sin((TERRAIN.maxSlopeDeg * Math.PI) / 180);
+
+// Beim Ziehen schwebt der Roboter knapp über dem Gelände ("in der Hand
+// getragen") und folgt waagerecht der Geländehöhe.
+const DRAG_HOVER = 0.06; // m über dem Gelände
+
+// Beim Ziehen darf der Roboter nur so weit, dass sein Körper ganz über dem
+// Rasen bleibt (nie über die Kante in die Leere).
 const DRAG_LIMIT_X = SIZES.lawnWidth / 2 - SIZES.robotLength / 2;
 const DRAG_LIMIT_Z = SIZES.lawnDepth / 2 - SIZES.robotLength / 2;
 
@@ -101,7 +107,7 @@ const DRAG_LIMIT_Z = SIZES.lawnDepth / 2 - SIZES.robotLength / 2;
  *   driving   — geradeaus mähen
  *   seeking   — Akku niedrig, fährt geradeaus und sucht den Leitdraht
  *   following — folgt dem gefundenen Leitdraht heim zur Station
- *   charging  — steht angedockt und lädt
+ *   charging  — steht angedockt (eingerastet, eingefroren) und lädt
  *   backing   — nach Draht/Stoß (oder vom Laden) ein Stück zurücksetzen
  *   turning   — danach auf den Ziel-Kurs drehen
  *   dead      — Akku komplett leer, alles steht still
@@ -124,6 +130,45 @@ function yawQuat(yaw: number): RAPIER.Rotation {
   return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
 }
 
+// Notnagel-Dreh-Achse, falls ein Rad keine in createRobot bestimmte
+// `spinAxis` mitbringt (dann eben blind die lokale X-Achse).
+const _fallbackSpinAxis = new THREE.Vector3(1, 0, 0);
+
+/** Die in createRobot bestimmte Achs-Achse eines Rad-Knotens (lokal). */
+function wheelSpinAxis(wheel: THREE.Object3D): THREE.Vector3 {
+  return (wheel.userData.spinAxis as THREE.Vector3) ?? _fallbackSpinAxis;
+}
+
+// Wiederverwendete Hilfsobjekte für `terrainPose` — kein Müll pro Aufruf.
+const _poseUp = new THREE.Vector3();
+const _poseFwd = new THREE.Vector3();
+const _poseRight = new THREE.Vector3();
+const _poseMat = new THREE.Matrix4();
+const _poseQuat = new THREE.Quaternion();
+
+/**
+ * Pose auf dem Gelände: Position auf der Geländehöhe (+ Ruhe-Federweg) und
+ * eine Drehung, die den Roboter mit `yaw` ausrichtet UND seine Hochachse auf
+ * die Gelände-Normale neigt. Für die Spawn-Pose und das Andock-Einrasten.
+ */
+function terrainPose(
+  x: number,
+  z: number,
+  yaw: number,
+): { pos: RAPIER.Vector; rot: RAPIER.Rotation } {
+  _poseUp.copy(normalAt(x, z));
+  // Flache Blickrichtung aus dem Yaw, auf die Tangentialebene projiziert.
+  _poseFwd.set(Math.sin(yaw), 0, Math.cos(yaw));
+  _poseFwd.addScaledVector(_poseUp, -_poseFwd.dot(_poseUp)).normalize();
+  _poseRight.crossVectors(_poseUp, _poseFwd).normalize();
+  _poseMat.makeBasis(_poseRight, _poseUp, _poseFwd);
+  _poseQuat.setFromRotationMatrix(_poseMat);
+  return {
+    pos: { x, y: heightAt(x, z) + SUSPENSION.restLength, z },
+    rot: { x: _poseQuat.x, y: _poseQuat.y, z: _poseQuat.z, w: _poseQuat.w },
+  };
+}
+
 /** Bewegt `current` höchstens um `maxStep` in Richtung `target`. */
 function approach(current: number, target: number, maxStep: number): number {
   const delta = target - current;
@@ -138,7 +183,8 @@ function wrapPi(a: number): number {
 
 /**
  * Steuert genau einen Roboter: sein Physik-Körper, seine zwei Rad-Motoren,
- * die Reibungs-Berechnung, die Draht- und Stoß-Erkennung und die Autonomie.
+ * die Rad-Federung, die Reibungs-Berechnung, die Draht- und Stoß-Erkennung
+ * und die Autonomie.
  */
 export class RobotController {
   private readonly body: RAPIER.RigidBody;
@@ -184,14 +230,21 @@ export class RobotController {
   private leitDist: number | null = null;
   private leitCrossed = false;
 
-  // Ziel-Position beim Ziehen (Weltkoordinaten auf y = 0).
+  // Ziel-Position + Kurs beim Ziehen (Weltkoordinaten XZ, fester Yaw).
   private dragX = 0;
   private dragZ = 0;
+  private dragYaw = 0;
+
+  // Eingefrorene Andock-Pose, solange der Roboter lädt (kinematisch).
+  private frozenPos: RAPIER.Vector = { x: 0, y: 0, z: 0 };
+  private frozenRot: RAPIER.Rotation = { x: 0, y: 0, z: 0, w: 1 };
 
   // Wiederverwendete Hilfsobjekte — kein Müll pro Frame.
   private readonly _quat = new THREE.Quaternion();
   private readonly _fwd = new THREE.Vector3();
-  private readonly _right = new THREE.Vector3();
+  private readonly _r = new THREE.Vector3();
+  private readonly _ft = new THREE.Vector3();
+  private readonly _lt = new THREE.Vector3();
 
   constructor(
     world: RAPIER.World,
@@ -209,20 +262,22 @@ export class RobotController {
     this.ledMat =
       (ledMesh?.material as THREE.MeshStandardMaterial | undefined) ?? null;
 
-    // Dynamischer Körper, in Ebene und Hochachsen-Drehung eingesperrt.
+    // Dynamischer Körper mit vollen 6 Freiheitsgraden — er kann jetzt
+    // klettern, sich neigen und (auf einem Steilhang) sogar kippen. Etwas
+    // Winkel-Dämpfung, damit nichts zappelt. Auf der Geländehöhe und in den
+    // Hang geneigt gestartet, damit nichts einfedert/aufschlägt.
+    const spawn = terrainPose(start.x, start.z, start.yaw);
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-      .setTranslation(start.x, 0, start.z)
-      .setRotation(yawQuat(start.yaw))
-      .enabledTranslations(true, false, true) // nur X/Z — bleibt auf dem Rasen
-      .enabledRotations(false, true, false) // nur Y — kann nicht kippen
+      .setTranslation(spawn.pos.x, spawn.pos.y, spawn.pos.z)
+      .setRotation(spawn.rot)
       .setLinearDamping(0.2) // winziger Luftwiderstand für ruhigen Lauf
-      .setAngularDamping(0.4);
+      .setAngularDamping(0.8);
     this.body = world.createRigidBody(bodyDesc);
 
     // Quader-Collider, vom Boden-Ursprung um die halbe Höhe nach oben gesetzt.
     // COLLISION_EVENTS = der "Stoßsensor": Rapier meldet jedes Anstoßen.
     // Kollisions-Gruppe: stößt an Hindernisse (Ästchen, später Haus/Baum),
-    // ignoriert den Boden — die Rasen-Grenze ist der Draht, keine Wand.
+    // ignoriert das Gelände — der Roboter schwebt auf seiner Rad-Federung.
     const colliderDesc = RAPIER.ColliderDesc.cuboid(
       BODY_HALF.x,
       BODY_HALF.y,
@@ -299,17 +354,19 @@ export class RobotController {
 
   /**
    * Ein fester Physik-Schritt: Sensoren lesen, Autonomie denken, Motoren
-   * regeln, Reibungskräfte an den Rädern aufbringen. Direkt vor `world.step()`
+   * regeln, Rad-Federung + Reibungskräfte aufbringen. Direkt vor `world.step()`
    * aufrufen.
    */
   fixedUpdate(dt: number): void {
-    // Beim Ziehen ist der Körper kinematisch und folgt nur dem Zeiger.
+    // Beim Ziehen ist der Körper kinematisch: er schwebt waagerecht knapp
+    // über dem Gelände und folgt nur dem Zeiger (in der Hand getragen).
     if (this.state === 'held') {
       this.body.setNextKinematicTranslation({
         x: this.dragX,
-        y: 0,
+        y: heightAt(this.dragX, this.dragZ) + DRAG_HOVER,
         z: this.dragZ,
       });
+      this.body.setNextKinematicRotation(yawQuat(this.dragYaw));
       return;
     }
 
@@ -317,18 +374,25 @@ export class RobotController {
     const rot = this.body.rotation();
     this._quat.set(rot.x, rot.y, rot.z, rot.w);
     this._fwd.set(0, 0, 1).applyQuaternion(this._quat); // vorne
-    this._right.set(1, 0, 0).applyQuaternion(this._quat); // rechts
 
     this.sense(); // Spulen-Sensoren lesen
     this.think(dt);
     this.rampMotors(dt);
 
-    // Tot oder angehalten -> Motoren aus, keine Kräfte.
-    if (this.state === 'stopped' || this.state === 'dead') return;
+    // Beim Laden bleibt der Körper in der Andock-Pose eingefroren (kinematisch)
+    // — das hält ihn am Hang fest und lässt das Wiederbeleben sauber einrasten.
+    if (this.state === 'charging') {
+      this.body.setNextKinematicTranslation(this.frozenPos);
+      this.body.setNextKinematicRotation(this.frozenRot);
+      return;
+    }
 
-    // Reibungskraft je Rad — daraus entsteht die ganze Bewegung.
-    this.applyWheelFriction(-TRACK_HALF, this.speedLeft, dt);
-    this.applyWheelFriction(TRACK_HALF, this.speedRight, dt);
+    // Rad-Federung an allen vier Rädern — sie hält den Körper auf dem Gelände
+    // (auch im Stillstand). Nur die Antriebsräder bekommen zusätzlich Schub.
+    this.applyWheel(-TRACK_HALF, WHEEL_Z, true, this.speedLeft, dt);
+    this.applyWheel(TRACK_HALF, WHEEL_Z, true, this.speedRight, dt);
+    this.applyWheel(-TRACK_HALF, CASTER_Z, false, 0, dt);
+    this.applyWheel(TRACK_HALF, CASTER_Z, false, 0, dt);
   }
 
   /**
@@ -342,18 +406,21 @@ export class RobotController {
     this.view.quaternion.set(rot.x, rot.y, rot.z, rot.w);
 
     // Räder drehen sich, weil sie über den Boden abrollen (Tempo / Radius).
-    // Die Rad-Achse zeigt im GLB-Modell entlang der lokalen Z-Achse des Rad-
-    // Objekts — darum dreht hier `rotation.z`. Vorzeichen rein optisch.
+    // Gedreht wird um die echte Achs-Achse des Rad-Knotens (aus createRobot,
+    // userData.spinAxis) — nicht blind um die lokale X-Achse.
     if (this.wheelLeftMesh) {
-      this.wheelLeftMesh.rotation.z += (this.speedLeft / WHEEL_RADIUS) * frameDt;
+      this.wheelLeftMesh.rotateOnAxis(
+        wheelSpinAxis(this.wheelLeftMesh),
+        (this.speedLeft / WHEEL_RADIUS) * frameDt,
+      );
     }
     if (this.wheelRightMesh) {
-      this.wheelRightMesh.rotation.z +=
-        (this.speedRight / WHEEL_RADIUS) * frameDt;
+      this.wheelRightMesh.rotateOnAxis(
+        wheelSpinAxis(this.wheelRightMesh),
+        (this.speedRight / WHEEL_RADIUS) * frameDt,
+      );
     }
-    // Mähklinge dreht nur, wenn der Roboter wirklich mäht. Sie hängt am
-    // Zustand, nicht am Tempo: `seeking`/`following` fahren genauso schnell
-    // wie `driving`, mähen aber nicht.
+    // Mähklinge dreht nur, wenn der Roboter wirklich mäht.
     if (this.bladeMesh && this.bladesOn()) {
       this.bladeMesh.rotation.y += BLADE_SPIN * frameDt;
     }
@@ -393,46 +460,53 @@ export class RobotController {
     const p = this.body.translation();
     this.dragX = p.x;
     this.dragZ = p.z;
+    // Waagerecht halten: aktuellen Yaw aus der Rotation behalten.
+    const r = this.body.rotation();
+    this._quat.set(r.x, r.y, r.z, r.w);
+    this._fwd.set(0, 0, 1).applyQuaternion(this._quat);
+    this.dragYaw = Math.atan2(this._fwd.x, this._fwd.z);
     this.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
   }
 
-  /** Setzt das Zieh-Ziel; bleibt auf dem Rasen-Slab (nie über die Kante). */
+  /** Setzt das Zieh-Ziel (XZ); bleibt über dem Rasen (nie über die Kante). */
   dragTo(x: number, z: number): void {
     this.dragX = THREE.MathUtils.clamp(x, -DRAG_LIMIT_X, DRAG_LIMIT_X);
     this.dragZ = THREE.MathUtils.clamp(z, -DRAG_LIMIT_Z, DRAG_LIMIT_Z);
   }
 
   /**
-   * Beendet das Ziehen: Der Körper wird wieder dynamisch und steht ohne
-   * Schwung still. Wo der Roboter abgesetzt wird, entscheidet, wie es
+   * Beendet das Ziehen. Wo der Roboter abgesetzt wird, entscheidet, wie es
    * weitergeht:
    *   - nah genug an der Station (dockDropRadius)  -> andocken und laden
    *   - sonst, mit leerem Akku                     -> bleibt liegen ('dead')
    *   - sonst                                      -> fährt normal weiter
+   * Beim Loslassen wird der Körper wieder dynamisch; die Rad-Federung setzt
+   * ihn ab und neigt ihn in den Hang.
    */
   endDrag(): void {
-    this.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
-    this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    const p = this.body.translation();
+    const nearDock =
+      Math.hypot(this.dockX - p.x, this.dockZ - p.z) < DRIVE.dockDropRadius;
+
     this.bumped = false;
     this.stateTimer = 0;
     this.speedLeft = 0;
     this.speedRight = 0;
 
-    const p = this.body.translation();
-    const nearDock =
-      Math.hypot(this.dockX - p.x, this.dockZ - p.z) < DRIVE.dockDropRadius;
-
     if (nearDock) {
-      // An der Station abgesetzt -> andocken und laden (rettet auch 'dead').
-      this.state = 'charging';
-      this.targetLeft = 0;
-      this.targetRight = 0;
-    } else if (this.battery <= 0) {
-      // Leerer Akku, nicht auf dem Dock -> bleibt tot liegen.
+      // An der Station abgesetzt -> einrasten und laden (rettet auch 'dead').
+      this.enterCharging();
+      return;
+    }
+
+    // Sonst dynamisch absetzen — die Federung fängt ihn auf.
+    this.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+    this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+
+    if (this.battery <= 0) {
       this.enterDead();
     } else {
-      // Sonst ganz normal weitermähen.
       this.state = 'driving';
       this.targetLeft = DRIVE.maxSpeed;
       this.targetRight = DRIVE.maxSpeed;
@@ -443,8 +517,8 @@ export class RobotController {
 
   /**
    * Liest die Sensoren: die beiden Spulen am Begrenzungsdraht und die
-   * Vorzeichen-Distanz der vorderen Spule zum Leitdraht. Ein Vorzeichen-
-   * Wechsel dort heißt: die Nase hat den Leitdraht überquert.
+   * Vorzeichen-Distanz der vorderen Spule zum Leitdraht. Alles reines 2D
+   * (X/Z) — das Gelände ändert nur die Höhe, nie die Draht-Logik.
    */
   private sense(): void {
     const p = this.body.translation();
@@ -481,6 +555,16 @@ export class RobotController {
       this.battery = Math.min(1, this.battery + BATTERY.charge * dt);
     } else {
       this.battery = Math.max(0, this.battery - BATTERY.drain * dt);
+      // Mehr-Verbrauch bergauf: zeigt die Nase nach oben und treiben die
+      // Motoren vorwärts, zieht der Roboter unter Last zusätzlich Strom.
+      const fwdMotor = (this.speedLeft + this.speedRight) / 2;
+      if (fwdMotor > 0 && this._fwd.y > 0) {
+        const climbFrac = Math.min(1, this._fwd.y / SIN_MAX_SLOPE);
+        this.battery = Math.max(
+          0,
+          this.battery - BATTERY.climbDrain * climbFrac * dt,
+        );
+      }
       if (this.battery <= 0) {
         // Akku komplett leer -> kompletter Stillstand.
         this.enterDead();
@@ -547,9 +631,7 @@ export class RobotController {
         const pos = this.body.translation();
         const dock = LEITDRAHT.nails[0]; // nail[0] = Dock
         if (Math.hypot(dock.x - pos.x, dock.z - pos.z) < DOCK_RADIUS) {
-          this.state = 'charging';
-          this.targetLeft = 0;
-          this.targetRight = 0;
+          this.enterCharging();
           break;
         }
         const carrot = carrotTowardStart(
@@ -563,11 +645,14 @@ export class RobotController {
       }
 
       case 'charging':
-        // Stehen bleiben und laden.
+        // Eingerastet stehen und laden. Voll -> dynamisch werden und
+        // rückwärts aus der Station heraus, dann weitermähen.
         this.targetLeft = 0;
         this.targetRight = 0;
         if (this.battery >= BATTERY.full) {
-          // Voll — rückwärts aus der Station heraus, dann weitermähen.
+          this.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+          this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
           this.startReaction(this.randomTurnTarget(), 'driving');
         }
         break;
@@ -648,6 +733,25 @@ export class RobotController {
     this.zeroMotors();
   }
 
+  /**
+   * Rastet den Roboter in der Andock-Pose ein und friert ihn dort kinematisch
+   * fest, bis der Akku voll ist. Das hält ihn am Hang sicher (bei 20° hielte
+   * die Reibung sonst nur knapp) und lässt das Wiederbeleben sauber einrasten.
+   */
+  private enterCharging(): void {
+    this.state = 'charging';
+    this.zeroMotors();
+    // Auf die Andock-Pose schnappen: Position am Dock, in den Hang geneigt.
+    const r = this.body.rotation();
+    this._quat.set(r.x, r.y, r.z, r.w);
+    this._fwd.set(0, 0, 1).applyQuaternion(this._quat);
+    const yaw = Math.atan2(this._fwd.x, this._fwd.z);
+    const pose = terrainPose(this.dockX, this.dockZ, yaw);
+    this.frozenPos = pose.pos;
+    this.frozenRot = pose.rot;
+    this.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+  }
+
   /** Schaltet die Motoren ab und nimmt dem Körper allen Schwung. */
   private zeroMotors(): void {
     this.speedLeft = 0;
@@ -660,14 +764,15 @@ export class RobotController {
 
   /**
    * Lenkt den Roboter auf einen Ziel-Punkt zu. Liegt das Ziel vorne, fährt er
-   * darauf zu; liegt es seitlich oder hinten, dreht er sich erst hin.
+   * darauf zu; liegt es seitlich oder hinten, dreht er sich erst hin. Rein 2D
+   * (XZ) — die Blickrichtung wird auf die Bodenebene projiziert.
    */
   private steerTo(targetX: number, targetZ: number): void {
     const pos = this.body.translation();
     const dx = targetX - pos.x;
     const dz = targetZ - pos.z;
 
-    // Winkel zwischen Blickrichtung und Richtung zum Ziel (-π..π).
+    // Winkel zwischen Blickrichtung (XZ) und Richtung zum Ziel (-π..π).
     const ahead = dx * this._fwd.x + dz * this._fwd.z;
     const side = this._fwd.x * dz - this._fwd.z * dx;
     const heading = Math.atan2(side, ahead);
@@ -688,30 +793,69 @@ export class RobotController {
   }
 
   /**
-   * Bringt die Reibungskraft eines Rades auf den Körper.
+   * Ein abgetastetes Rad: Geländehöhe am Rad-XZ ermitteln, eine Feder den
+   * Körper dort nach oben drücken lassen (plus Dämpfung) und — bei den
+   * Antriebsrädern — die Schlupf-Reibung in der Tangentialebene des Geländes
+   * aufbringen. Die Lenkrollen bekommen NUR die Federkraft.
    *
    * @param localX     X-Position des Rades im Roboter (-/+ TRACK_HALF)
+   * @param localZ     Z-Position des Rades im Roboter (Antrieb hinten / Caster vorn)
+   * @param drive      true = Antriebsrad (mit Reibung), false = Lenkrolle
    * @param motorSpeed Wunsch-Abrolltempo des Rad-Motors (m/s)
    * @param dt         Physik-Schrittweite (s)
    */
-  private applyWheelFriction(
+  private applyWheel(
     localX: number,
+    localZ: number,
+    drive: boolean,
     motorSpeed: number,
     dt: number,
   ): void {
-    // Hebel vom Körper-Mittelpunkt zum Rad-Aufstandspunkt (in Weltachsen).
-    const rx = this._right.x * localX + this._fwd.x * WHEEL_Z;
-    const rz = this._right.z * localX + this._fwd.z * WHEEL_Z;
+    // Welt-Versatz vom Körper-Mittelpunkt zum Rad-Anker (lokal y = 0).
+    this._r.set(localX, 0, localZ).applyQuaternion(this._quat);
+    const pos = this.body.translation();
+    const wx = pos.x + this._r.x;
+    const wy = pos.y + this._r.y;
+    const wz = pos.z + this._r.z;
 
-    // Geschwindigkeit des Bodens unter dem Rad: v = linvel + omega × r.
+    // Geschwindigkeit des Körpers am Rad-Anker: v = linvel + omega × r.
     const lin = this.body.linvel();
-    const omega = this.body.angvel().y;
-    const vx = lin.x + omega * rz;
-    const vz = lin.z - omega * rx;
+    const ang = this.body.angvel();
+    const vx = lin.x + (ang.y * this._r.z - ang.z * this._r.y);
+    const vy = lin.y + (ang.z * this._r.x - ang.x * this._r.z);
+    const vz = lin.z + (ang.x * this._r.y - ang.y * this._r.x);
 
-    // In Roll- und Querrichtung des Rades zerlegen.
-    const vForward = vx * this._fwd.x + vz * this._fwd.z;
-    const vLateral = vx * this._right.x + vz * this._right.z;
+    // — Federung: drückt den Körper (nahezu senkrecht) nach oben ——————————
+    const groundY = heightAt(wx, wz);
+    const currentLength = wy - groundY; // Anker-Höhe über dem Gelände
+    const compression = SUSPENSION.restLength - currentLength;
+    if (compression > 0) {
+      let f = SUSPENSION.stiffness * compression - SUSPENSION.damping * vy;
+      if (f < 0) f = 0;
+      if (f > SUSPENSION.maxForce) f = SUSPENSION.maxForce;
+      this.body.applyImpulseAtPoint(
+        { x: 0, y: f * dt, z: 0 },
+        { x: wx, y: wy, z: wz },
+        true,
+      );
+    }
+
+    if (!drive) return; // Lenkrollen: keine Horizontalkraft
+
+    // Hängt das Rad weit in der Luft (über einer Kuppe), greift es nicht.
+    if (currentLength > SUSPENSION.restLength + 0.08) return;
+
+    // — Schlupf-Reibung in der Tangentialebene des Geländes ————————————————
+    const n = normalAt(wx, wz);
+    // Vorwärts-Richtung des Rades auf die Hang-Ebene projiziert.
+    this._ft.copy(this._fwd).addScaledVector(n, -this._fwd.dot(n));
+    if (this._ft.lengthSq() < 1e-6) return;
+    this._ft.normalize();
+    // Querrichtung in der Hang-Ebene.
+    this._lt.crossVectors(n, this._ft).normalize();
+
+    const vForward = vx * this._ft.x + vy * this._ft.y + vz * this._ft.z;
+    const vLateral = vx * this._lt.x + vy * this._lt.y + vz * this._lt.z;
 
     // Längs: Schlupf zwischen Motor-Tempo und echtem Tempo -> Antrieb/Bremse.
     const fForward = THREE.MathUtils.clamp(
@@ -726,13 +870,14 @@ export class RobotController {
       FORCE_MAX,
     );
 
-    // Kraft -> Impuls (Kraft × Zeit) und am Rad-Aufstandspunkt aufbringen.
-    const ix = (fForward * this._fwd.x + fLateral * this._right.x) * dt;
-    const iz = (fForward * this._fwd.z + fLateral * this._right.z) * dt;
-    const pos = this.body.translation();
+    // Kraft -> Impuls (Kraft × Zeit), am Rad-Anker aufgebracht.
     this.body.applyImpulseAtPoint(
-      { x: ix, y: 0, z: iz },
-      { x: pos.x + rx, y: pos.y, z: pos.z + rz },
+      {
+        x: (this._ft.x * fForward + this._lt.x * fLateral) * dt,
+        y: (this._ft.y * fForward + this._lt.y * fLateral) * dt,
+        z: (this._ft.z * fForward + this._lt.z * fLateral) * dt,
+      },
+      { x: wx, y: wy, z: wz },
       true,
     );
   }

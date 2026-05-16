@@ -41,7 +41,12 @@ Die Werte (Höchstgeschwindigkeit, Beschleunigung, Drehgeschwindigkeit) sollen
 
 ## Der Garten (die Welt)
 
-- Der **Rasen** ist erst einmal **rechteckig und flach**.
+- Der **Rasen** ist **rechteckig** und hat ein sanft gewelltes **3D-Gelände** —
+  Hügel und Mulden, über die der Roboter mit **echter Physik** fährt (er
+  klettert bergauf, neigt sich in die Hänge, wird am Berg langsamer). Die
+  Geländehöhe steckt in einer editierbaren **Höhenkarte** (`terrain.ts`);
+  Sicht-Meshes, der Physik-Boden (ein Höhenfeld-Collider) und die Gras-Höhen-
+  Textur werden alle daraus abgeleitet.
 - **Haus, Baum und Pflanze blockieren** den Roboter — er **stößt** physisch dagegen
   und weicht aus (anstoßen → zurück → wegdrehen).
 - Über den Rasen legen wir ein unsichtbares **Gitter aus vielen kleinen Feldern**.
@@ -161,6 +166,8 @@ Fertige, detaillierte 3D-Modelle kommen erst später.
 Trägheit, Abprallen) und die **3D-Szene** (Garten aus Grundformen, Dreh-Kamera,
 Mähspur). Echtes **3D-Gras** mit Höhe ist **erledigt** — instanzierte Halme über
 dem Gitter, die der Roboter mäht, platt drückt und die nachwachsen (`grass.ts`).
+Auch das gewellte **3D-Gelände** ist **erledigt** — der Roboter ist ein Raycast-
+Fahrzeug auf vier abgetasteten Rad-Federn (`terrain.ts`, `robotController.ts`).
 
 **Später geplant** (notiert, damit wir es nicht vergessen — aber jetzt noch nicht):
 
@@ -168,7 +175,11 @@ dem Gitter, die der Roboter mäht, platt drückt und die nachwachsen (`grass.ts`
   **Nägeln** steckt. Das Nagel-Polylinien-Primitiv (gemeinsame Form von
   Begrenzungs- und Leitdraht) ist der erste Schritt dahin — noch sind beide
   Drähte feste Formen.
-- **Hügel / Gelände** statt flachem Rasen
+- **Terraforming**: Hügel und Mulden mit einem **Pinsel** selbst formen. Die
+  Höhenkarte (`terrain.ts`) ist schon eine editierbare Datenstruktur — der
+  Grundstein dafür. Eine spätere Pinsel-UI ändert nur das Array; Collider,
+  Sicht-Meshes und Höhen-Textur werden dann neu gebaut. (Das gewellte Gelände
+  selbst ist **erledigt** — nicht mehr flach.)
 - **Schlupf bei nassem Wetter** (Räder drehen durch)
 - Fertige, detaillierte **3D-Modelle** statt Grundformen
 - Vielleicht später leichte **Spielmechanik** (z.B. "ganzen Rasen mähen")

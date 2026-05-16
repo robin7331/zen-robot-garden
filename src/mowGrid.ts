@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { COLORS, SIZES, GRASS, BLADES } from './tokens';
+import { COLORS, SIZES, GRASS, BLADES, TERRAIN } from './tokens';
+import { heightAt } from './terrain';
 
 /**
  * Das Mäh-Gitter — die einzige sich verändernde Fläche im Garten.
@@ -118,12 +119,27 @@ export class MowGrid {
 
     this.redraw(); // Pixel-Puffer aus den Start-Höhen füllen
 
-    // Flache Ebene genau über der Rasen-Oberseite (y = 0), hauchdünn
-    // angehoben, damit sie nicht mit der Gras-Deckschicht flimmert. Sie ist
-    // exakt so groß wie die Mäh-Fläche; der Gras-Lippen-Überstand des Slabs
-    // bleibt sichtbar als ungemähter Rand.
-    const geometry = new THREE.PlaneGeometry(SIZES.lawnWidth, SIZES.lawnDepth);
+    // Unterteilte Ebene, deren Stützpunkte auf die Geländehöhe gehoben sind —
+    // die Mäh-Textur "drapiert" so über die Hügel. Hauchdünn angehoben (2 mm),
+    // damit sie nicht mit der Gras-Deckschicht flimmert. Exakt so groß wie die
+    // Mäh-Fläche; der Gras-Lippen-Überstand bleibt sichtbar als ungemähter
+    // Rand. Die Mäh-Logik selbst bleibt reines 2D (X/Z) — nur die Anzeige folgt
+    // dem Gelände.
+    const segX = Math.round(SIZES.lawnWidth / TERRAIN.cellSize);
+    const segZ = Math.round(SIZES.lawnDepth / TERRAIN.cellSize);
+    const geometry = new THREE.PlaneGeometry(
+      SIZES.lawnWidth,
+      SIZES.lawnDepth,
+      segX,
+      segZ,
+    );
     geometry.rotateX(-Math.PI / 2); // aus der XY- in die XZ-Ebene kippen
+    const gp = geometry.attributes.position;
+    for (let i = 0; i < gp.count; i++) {
+      gp.setY(i, heightAt(gp.getX(i), gp.getZ(i)) + 0.002);
+    }
+    gp.needsUpdate = true;
+    geometry.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({
       map: this.texture,
       roughness: 1,
@@ -131,7 +147,6 @@ export class MowGrid {
     });
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.name = 'mowGrid';
-    this.mesh.position.y = 0.002;
     this.mesh.receiveShadow = true; // Roboter-Schatten fällt auf die Mähspur
   }
 

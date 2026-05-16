@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { COLORS, SIZES, BLADES } from './tokens';
+import { terrainHeightTexture } from './terrain';
 import type { MowGrid } from './mowGrid';
 
 /**
@@ -125,6 +126,7 @@ const VERTEX_SHADER = /* glsl */ `
   attribute vec3 aRandom;
 
   uniform sampler2D uHeightTex;
+  uniform sampler2D uTerrainTex;
   uniform float uTime;
 
   varying float vFrac;
@@ -197,6 +199,15 @@ const VERTEX_SHADER = /* glsl */ `
     float windAmp = WIND_STRENGTH * bladeHeight * (1.0 - flatten);
     world.xz += WIND_DIR * sway * windAmp * frac * frac;
 
+    // Geländehöhe am Halm-Fuß abtasten und den ganzen Halm darauf heben — so
+    // wächst das Gras auf den Hügeln statt durch sie hindurch. Der Roboter-
+    // Schatten und die Mäh-Logik bleiben davon unberührt (reines 2D).
+    float terrainH = texture2D(uTerrainTex, vec2(
+      (aOffset.x + LAWN.x * 0.5) / LAWN.x,
+      (aOffset.y + LAWN.y * 0.5) / LAWN.y
+    )).r;
+    world.y += terrainH;
+
     gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 1.0);
   }
 `;
@@ -252,6 +263,7 @@ export class GrassField {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uHeightTex: { value: grid.heightTexture },
+        uTerrainTex: { value: terrainHeightTexture() },
         uTime: { value: 0 },
         uGrassMown: { value: new THREE.Color(COLORS.grassMown) },
         uGrassFull: { value: new THREE.Color(COLORS.grass) },
