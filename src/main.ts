@@ -75,7 +75,8 @@ async function main(): Promise<void> {
     .material as THREE.MeshStandardMaterial;
 
   // Roboter: Sicht-Modell in die Szene, Steuerung an die Physik koppeln.
-  const robot = createRobot();
+  // createRobot() lädt erst das GLB-Modell, darum await.
+  const robot = await createRobot();
   scene.add(robot);
   const controller = new RobotController(
     world,

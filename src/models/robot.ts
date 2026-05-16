@@ -1,112 +1,90 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { COLORS, SIZES } from '../tokens';
+// Vite liefert mit `?url` die fertige Adresse der GLB-Datei zurück.
+import robotModelUrl from './husqvarna-aspire-r6v-meshy.glb?url';
 
 /**
- * Der Mähroboter — aus einfachen Grundformen zusammengebaut (Bauklotz-/LEGO-Look),
- * flat-shaded und low-poly wie der Rest des Dioramas. Noch kein fertiges 3D-Modell:
- * Quader für den Körper, Zylinder für Räder und Klinge, eine Kugel als Stützrad.
+ * Der Mähroboter — jetzt ein fertiges 3D-Modell (Husqvarna Aspire R6V) statt
+ * der früheren Bauklotz-Form aus Grundkörpern.
  *
- * Maße und Farben kommen aus DESIGN.md über tokens.ts.
+ * Die GLB-Datei wird beim Start geladen, automatisch ausgerichtet, auf den
+ * Mähroboter-Maßstab aus den Design-Tokens skaliert und auf den Boden gesetzt.
  *
- * Achsen-Konvention:
+ * Achsen-Konvention (wie der Rest des Spiels):
  *   +Z = vorne (Fahrtrichtung)   -Z = hinten
  *   +X = rechts                  -X = links
  *    Y = oben
- * Der Gruppen-Ursprung liegt am Boden (y = 0), mittig zwischen den Rädern — so
- * lässt sich der Roboter direkt auf den Rasen (Oberseite y = 0) setzen.
+ * Der Gruppen-Ursprung liegt am Boden (y = 0), mittig — so lässt sich der
+ * Roboter direkt auf den Rasen setzen.
  *
- * Benannte Teile für spätere Animation (Physik kommt später):
- *   'wheelLeft', 'wheelRight' — drehen sich beim Fahren um ihre X-Achse
- *   'blade'                   — Mähklingen-Scheibe, dreht sich um Y
- *   'statusLed'               — kleine Leuchte: an solange lebendig, aus bei
- *                               leerem Akku ('dead')
+ * Benannte Teile für die Steuerung (RobotController):
+ *   'statusLed' — kleine Leuchte oben: an solange lebendig, aus bei leerem
+ *                 Akku ('dead'). Bleibt als Grundform erhalten, weil das
+ *                 GLB-Modell sie nicht mitbringt.
+ *
+ * Hinweis: Die Räder und die Mähklinge sind im GLB-Modell ein einziges Mesh
+ * und drehen sich darum nicht mehr einzeln mit (anders als beim alten
+ * Bauklotz-Roboter). Der RobotController kommt damit zurecht.
  */
 
-// — Maße des Roboters (Meter) ———————————————————————————————————
-const GROUND_GAP = 0.045; // Spalt zwischen Körper-Unterseite und Boden
-const BODY_MAIN_H = 0.135; // Höhe des Haupt-Körpers
-const BODY_CAP_H = SIZES.robotHeight - GROUND_GAP - BODY_MAIN_H; // Deckel oben
-const BODY_CAP_INSET = 0.09; // wie viel schmaler der Deckel je Seite ist
-
-const WHEEL_RADIUS = SIZES.wheelDiameter / 2;
-const WHEEL_THICKNESS = 0.06;
+// — Ausrichtung —————————————————————————————————————————————————
+// Falls der Roboter rückwärts fährt (Front zeigt nach hinten), diesen Wert
+// auf Math.PI setzen — dann dreht sich das Modell um 180°.
+const MODEL_YAW_OFFSET = 0;
 
 /**
- * Flat-shaded, satt-mattes Material — der Origami-/Papier-Look des Dioramas.
- * Ein Material je Farbe, von allen Teilen geteilt.
+ * Lädt das GLB-Modell und gibt den fertig ausgerichteten Roboter als Gruppe
+ * zurück. Asynchron, weil die Datei erst geladen werden muss:
+ *   const robot = await createRobot();
+ *   scene.add(robot);
  */
-function flatMat(color: string): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color),
-    flatShading: true,
-    roughness: 0.85,
-    metalness: 0,
-  });
-}
-
-const bodyMat = flatMat(COLORS.robotBody);
-const darkMat = flatMat(COLORS.robotDark);
-
-/**
- * Baut den kompletten Roboter und gibt ihn als Gruppe zurück.
- * In die Szene mit `scene.add(createRobot())`.
- */
-export function createRobot(): THREE.Group {
+export async function createRobot(): Promise<THREE.Group> {
   const robot = new THREE.Group();
   robot.name = 'robot';
 
-  // — Körper: zwei gestapelte Quader. Der schmalere Deckel gibt eine leicht
-  //   treppig-gerundete Silhouette — freundlicher als die flache "Puck"-Form. —
-  const bodyMain = new THREE.Mesh(
-    new THREE.BoxGeometry(SIZES.robotWidth, BODY_MAIN_H, SIZES.robotLength),
-    bodyMat,
-  );
-  bodyMain.position.y = GROUND_GAP + BODY_MAIN_H / 2;
+  const gltf = await new GLTFLoader().loadAsync(robotModelUrl);
+  const model = gltf.scene;
 
-  const bodyCap = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      SIZES.robotWidth - BODY_CAP_INSET * 2,
-      BODY_CAP_H,
-      SIZES.robotLength - BODY_CAP_INSET * 2,
-    ),
-    bodyMat,
-  );
-  bodyCap.position.y = GROUND_GAP + BODY_MAIN_H + BODY_CAP_H / 2;
+  // — 1. Ausrichten: die längere Boden-Achse soll die Fahrtrichtung (Z) sein.
+  //   Liegt das Modell quer (X länger als Z), drehen wir es um 90°. —
+  let box = new THREE.Box3().setFromObject(model);
+  let size = box.getSize(new THREE.Vector3());
+  if (size.x > size.z) {
+    model.rotation.y = Math.PI / 2;
+  }
+  model.rotation.y += MODEL_YAW_OFFSET;
+  model.updateMatrixWorld(true);
 
-  // — Sensor / "Gesicht" vorne: dunkle Leiste an der Front. Macht sofort
-  //   sichtbar, wohin der Roboter schaut. —
-  const sensor = new THREE.Mesh(
-    new THREE.BoxGeometry(SIZES.robotWidth * 0.62, 0.055, 0.05),
-    darkMat,
-  );
-  sensor.position.set(0, GROUND_GAP + BODY_MAIN_H * 0.62, SIZES.robotLength / 2);
+  // — 2. Gleichmäßig skalieren: die Länge (Z) auf den Token-Maßstab bringen.
+  //   Gleichmäßig, damit die Proportionen des Modells erhalten bleiben. —
+  box = new THREE.Box3().setFromObject(model);
+  size = box.getSize(new THREE.Vector3());
+  model.scale.setScalar(SIZES.robotLength / size.z);
+  model.updateMatrixWorld(true);
 
-  // — Antriebsräder links/rechts, leicht hinter der Mitte —————————————
-  const wheelX = SIZES.robotWidth / 2 + WHEEL_THICKNESS / 2 - 0.015;
-  const wheelLeft = makeWheel();
-  wheelLeft.name = 'wheelLeft';
-  wheelLeft.position.set(-wheelX, WHEEL_RADIUS, -0.06);
+  // — 3. Auf den Boden setzen (Unterseite auf y = 0) und horizontal zentrieren.
+  box = new THREE.Box3().setFromObject(model);
+  const center = box.getCenter(new THREE.Vector3());
+  const modelTop = box.max.y - box.min.y; // Höhe über dem Boden nach dem Setzen
+  model.position.x -= center.x;
+  model.position.z -= center.z;
+  model.position.y -= box.min.y;
 
-  const wheelRight = makeWheel();
-  wheelRight.name = 'wheelRight';
-  wheelRight.position.set(wheelX, WHEEL_RADIUS, -0.06);
+  // Jedes Mesh wirft und empfängt Schatten.
+  model.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
 
-  // — Stützrad / Gleiter vorne (kleine, kantige Kugel) ————————————————
-  const caster = new THREE.Mesh(new THREE.IcosahedronGeometry(0.045, 1), darkMat);
-  caster.position.set(0, 0.045, SIZES.robotLength / 2 - 0.07);
+  robot.add(model);
 
-  // — Mähklingen-Scheibe im Spalt unter dem Körper, von schräg oben sichtbar —
-  const blade = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.16, 0.012, 20),
-    darkMat,
-  );
-  blade.name = 'blade';
-  blade.position.set(0, GROUND_GAP / 2, 0.03);
-
-  // — Status-LED oben auf dem Deckel: sanftes Grün, solange der Roboter
-  //   lebt; dunkel bei leerem Akku ('dead'). So sieht man auf einen Blick,
-  //   ob er nur lädt/steht — oder wirklich leer ist. Die Leucht-Stärke
-  //   setzt der RobotController pro Bild. —
+  // — Status-LED oben auf dem Roboter: sanftes Grün, solange er lebt; dunkel
+  //   bei leerem Akku ('dead'). Das GLB-Modell hat keine eigene LED, darum
+  //   bleibt sie eine kleine Grundform. Die Leucht-Stärke setzt der
+  //   RobotController pro Bild. —
   const ledMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(COLORS.chargeLed),
     emissive: new THREE.Color(COLORS.chargeLed),
@@ -115,75 +93,12 @@ export function createRobot(): THREE.Group {
     roughness: 0.6,
     metalness: 0,
   });
-  const bodyTop = GROUND_GAP + BODY_MAIN_H + BODY_CAP_H;
   const statusLed = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.05), ledMat);
   statusLed.name = 'statusLed';
-  statusLed.position.set(0, bodyTop + 0.015, 0.12);
-
-  robot.add(
-    bodyMain,
-    bodyCap,
-    sensor,
-    wheelLeft,
-    wheelRight,
-    caster,
-    blade,
-    statusLed,
-  );
-
-  // Jedes Mesh wirft und empfängt Schatten.
-  robot.traverse((obj) => {
-    if (obj instanceof THREE.Mesh) {
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-    }
-  });
+  // Knapp über dem höchsten Punkt des Modells, leicht nach vorne versetzt.
+  statusLed.position.set(0, modelTop + 0.015, 0.1);
+  statusLed.castShadow = true;
+  robot.add(statusLed);
 
   return robot;
-}
-
-/**
- * Ein Antriebsrad als eigene Gruppe. Der Reifen-Zylinder ist so gedreht, dass
- * seine Achse entlang X liegt; das orange Naben-Kreuz auf beiden Außenseiten
- * macht die Drehung sichtbar. Drehen lässt sich das Rad später über die
- * X-Rotation der Gruppe: `wheel.rotation.x += ...`.
- */
-function makeWheel(): THREE.Group {
-  const wheel = new THREE.Group();
-
-  const tire = new THREE.Mesh(
-    new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_THICKNESS, 16),
-    darkMat,
-  );
-  tire.rotation.z = Math.PI / 2; // Zylinder-Achse von Y nach X drehen
-  wheel.add(tire);
-
-  // Orange Nabe + Speichen-Kreuz auf beiden Reifen-Außenseiten.
-  const spokeLen = WHEEL_RADIUS * 1.5;
-  for (const side of [-1, 1] as const) {
-    const faceX = side * (WHEEL_THICKNESS / 2 + 0.002);
-
-    const hub = new THREE.Mesh(
-      new THREE.CylinderGeometry(WHEEL_RADIUS * 0.32, WHEEL_RADIUS * 0.32, 0.01, 12),
-      bodyMat,
-    );
-    hub.rotation.z = Math.PI / 2;
-    hub.position.x = faceX;
-
-    const spokeV = new THREE.Mesh(
-      new THREE.BoxGeometry(0.009, spokeLen, 0.018),
-      bodyMat,
-    );
-    spokeV.position.x = faceX;
-
-    const spokeH = new THREE.Mesh(
-      new THREE.BoxGeometry(0.009, 0.018, spokeLen),
-      bodyMat,
-    );
-    spokeH.position.x = faceX;
-
-    wheel.add(hub, spokeV, spokeH);
-  }
-
-  return wheel;
 }
