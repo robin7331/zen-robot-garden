@@ -342,12 +342,13 @@ export class RobotController {
     this.view.quaternion.set(rot.x, rot.y, rot.z, rot.w);
 
     // Räder drehen sich, weil sie über den Boden abrollen (Tempo / Radius).
-    // Vorzeichen rein optisch gewählt: so rollt das Rad sichtbar "nach vorne".
+    // Die Rad-Achse zeigt im GLB-Modell entlang der lokalen Z-Achse des Rad-
+    // Objekts — darum dreht hier `rotation.z`. Vorzeichen rein optisch.
     if (this.wheelLeftMesh) {
-      this.wheelLeftMesh.rotation.x += (this.speedLeft / WHEEL_RADIUS) * frameDt;
+      this.wheelLeftMesh.rotation.z += (this.speedLeft / WHEEL_RADIUS) * frameDt;
     }
     if (this.wheelRightMesh) {
-      this.wheelRightMesh.rotation.x +=
+      this.wheelRightMesh.rotation.z +=
         (this.speedRight / WHEEL_RADIUS) * frameDt;
     }
     // Mähklinge dreht nur, wenn der Roboter wirklich mäht. Sie hängt am

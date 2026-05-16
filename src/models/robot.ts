@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { COLORS, SIZES } from '../tokens';
 // Vite liefert mit `?url` die fertige Adresse der GLB-Datei zurück.
-import robotModelUrl from './husqvarna-aspire-r6v-meshy.glb?url';
+import robotModelUrl from './husqvarna-aspire-r6v-rigged.glb?url';
 
 /**
  * Der Mähroboter — jetzt ein fertiges 3D-Modell (Husqvarna Aspire R6V) statt
@@ -22,10 +22,14 @@ import robotModelUrl from './husqvarna-aspire-r6v-meshy.glb?url';
  *   'statusLed' — kleine Leuchte oben: an solange lebendig, aus bei leerem
  *                 Akku ('dead'). Bleibt als Grundform erhalten, weil das
  *                 GLB-Modell sie nicht mitbringt.
+ *   'wheelLeft'/'wheelRight' — die beiden Antriebsräder. Im GLB heißen sie
+ *                 'Wheel_L'/'Wheel_R'; weiter unten werden sie nach ihrer
+ *                 Welt-X-Lage in links/rechts umbenannt und drehen sich dann
+ *                 beim Fahren mit.
  *
- * Hinweis: Die Räder und die Mähklinge sind im GLB-Modell ein einziges Mesh
- * und drehen sich darum nicht mehr einzeln mit (anders als beim alten
- * Bauklotz-Roboter). Der RobotController kommt damit zurecht.
+ * Hinweis: Die Mähklinge sitzt fest im Karosserie-Mesh und dreht sich nicht
+ * mit. Das vordere Stützrad ist (wie beim Differentialantrieb) passiv und
+ * bleibt ebenfalls Teil der Karosserie.
  */
 
 // — Ausrichtung —————————————————————————————————————————————————
@@ -70,6 +74,23 @@ export async function createRobot(): Promise<THREE.Group> {
   model.position.x -= center.x;
   model.position.z -= center.z;
   model.position.y -= box.min.y;
+
+  // — 4. Antriebsräder zum Mitdrehen benennen. Im GLB heißen sie
+  //   'Wheel_L'/'Wheel_R'; welches links (Spiel-Achse -X) bzw. rechts liegt,
+  //   hängt von der Ausrichtung in Schritt 1 ab — darum nach Welt-X sortieren
+  //   statt den GLB-Namen blind zu vertrauen. —
+  model.updateMatrixWorld(true);
+  const wheels: THREE.Object3D[] = [];
+  model.traverse((obj) => {
+    if (obj.name === 'Wheel_L' || obj.name === 'Wheel_R') wheels.push(obj);
+  });
+  if (wheels.length === 2) {
+    const worldX = (o: THREE.Object3D) =>
+      new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).x;
+    wheels.sort((a, b) => worldX(a) - worldX(b));
+    wheels[0].name = 'wheelLeft'; // kleineres X = links
+    wheels[1].name = 'wheelRight';
+  }
 
   // Jedes Mesh wirft und empfängt Schatten.
   model.traverse((obj) => {

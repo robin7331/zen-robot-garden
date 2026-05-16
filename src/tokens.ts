@@ -54,7 +54,7 @@ export const SIZES = {
   robotLength: 0.6, // Länge (Z, = Fahrtrichtung)
   robotWidth: 0.45, // Breite (X)
   robotHeight: 0.25, // Höhe (Y)
-  wheelDiameter: 0.2, // Antriebsräder Ø
+  wheelDiameter: 0.25, // Antriebsräder Ø (Husqvarna-GLB-Modell)
 } as const;
 
 /**
