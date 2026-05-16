@@ -15,11 +15,11 @@ import { heightAt } from './terrain';
  *   - Sonst wächst das Gras überall langsam und gleichmäßig nach. So ist der
  *     Roboter nie "fertig" — schön zen und endlos.
  *
- * Gezeigt wird die Grashöhe nur über die FARBE: vier Grün-Stufen von hell
- * (gemäht) bis dunkel (lang). Dazu malen wir das Gitter in eine DataTextur —
- * ein winziges Bild mit genau einem Pixel je Feld — und legen diese Textur
- * auf eine flache Ebene über den Rasen. NearestFilter hält die Pixel als
- * scharfe Quadrate, passend zum kantigen Origami-Look.
+ * Gezeigt wird die Grashöhe nur über die FARBE: stufenlos von hell (gemäht)
+ * bis dunkel (lang). Dazu malen wir das Gitter in eine DataTextur — ein
+ * winziges Bild mit genau einem Pixel je Feld — und legen diese Textur auf
+ * eine flache Ebene über den Rasen. LinearFilter glättet die Feld-Pixel
+ * weich ineinander, damit schräge Mähspuren keine Treppen-Kante zeigen.
  *
  * Das Gitter ist reine 2D-Logik (X/Z) und unabhängig von der Geometrie —
  * darum übersteht es spätere Hügel unverändert: dann wird die Ebene nur
@@ -43,17 +43,12 @@ function clampByte(v: number): number {
 }
 
 /**
- * Farb-Rampe des Gitters: Index 0 = frisch gemäht (hell) ... 3 = voll
- * nachgewachsen (dunkel). Die Länge dieser Rampe ist zugleich die Zahl der
- * Anzeige-Stufen — mehr oder weniger Töne hier ändern sie automatisch mit.
+ * Die beiden Eck-Farben der Rasen-Ebene: frisch gemäht (hell) und voll
+ * nachgewachsen (dunkel). Dazwischen wird je Feld STUFENLOS gemischt — eine
+ * feste Stufenzahl ergäbe beim Nachwachsen sichtbare Höhenlinien-Bänder.
  */
-const RAMP: ReadonlyArray<[number, number, number]> = [
-  hexToRgb(COLORS.grassMown),
-  hexToRgb(COLORS.grassShort),
-  hexToRgb(COLORS.grassMid),
-  hexToRgb(COLORS.grass),
-];
-const STEPS = RAMP.length;
+const GRASS_MOWN = hexToRgb(COLORS.grassMown);
+const GRASS_FULL = hexToRgb(COLORS.grass);
 
 /**
  * Verwaltet ein Mäh-Gitter: den Höhen-Speicher, die Anzeige-Textur und die
@@ -90,8 +85,9 @@ export class MowGrid {
       this.cellRate[i] = this.randomRate();
     }
 
-    // DataTextur: ein Pixel je Feld. NearestFilter -> scharfe Quadrate statt
-    // weichem Verlauf. Keine Mipmaps nötig (Textur wird nie verkleinert).
+    // DataTextur: ein Pixel je Feld. LinearFilter -> weicher Verlauf zwischen
+    // den Feldern, sonst zeigte eine schräge Mähspur eine Treppen-Kante.
+    // Keine Mipmaps nötig (Textur wird nie verkleinert).
     this.texture = new THREE.DataTexture(
       this.pixels,
       CELLS_X,
@@ -99,8 +95,8 @@ export class MowGrid {
       THREE.RGBAFormat,
     );
     this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.magFilter = THREE.NearestFilter;
-    this.texture.minFilter = THREE.NearestFilter;
+    this.texture.magFilter = THREE.LinearFilter;
+    this.texture.minFilter = THREE.LinearFilter;
     this.texture.generateMipmaps = false;
 
     // Höhen-Textur: 2 Kanäle (R = Höhe, G = flatten), ein Pixel je Feld. Der
@@ -151,26 +147,42 @@ export class MowGrid {
   }
 
   /**
-   * Mäht alle Felder unter einer Scheibe vom Radius GRASS.cutRadius um den
-   * Punkt (x, z): ihre Grashöhe wird sofort auf 0 gesetzt. Pro Bild aufrufen,
-   * solange der Roboter wirklich mäht.
+   * Mäht alle Felder unter einer Scheibe um den Punkt (x, z). Im Kern (Radius
+   * GRASS.cutRadius) wird die Grashöhe sofort auf 0 gesetzt; im Rand-Ring der
+   * Breite GRASS.cutFalloff läuft der Schnitt stufenlos auf "ungemäht" aus.
+   * Dieser weiche Rand gibt den Kanten-Feldern Zwischenwerte — ohne ihn zeigte
+   * eine schräge Mähspur eine Treppen-Kante (Raster-Aliasing). Pro Bild
+   * aufrufen, solange der Roboter wirklich mäht.
    */
   cutAt(x: number, z: number): void {
-    const r = GRASS.cutRadius;
-    const r2 = r * r;
-    // Feld-Bereich, der die Scheibe knapp umschließt — nur den durchsuchen.
-    const minCx = Math.max(0, this.cellX(x - r));
-    const maxCx = Math.min(CELLS_X - 1, this.cellX(x + r));
-    const minCz = Math.max(0, this.cellZ(z - r));
-    const maxCz = Math.min(CELLS_Z - 1, this.cellZ(z + r));
+    const rFull = GRASS.cutRadius;
+    const rOuter = rFull + GRASS.cutFalloff;
+    const rFull2 = rFull * rFull;
+    const rOuter2 = rOuter * rOuter;
+    // Feld-Bereich, der die volle Scheibe (Kern + Rand) knapp umschließt.
+    const minCx = Math.max(0, this.cellX(x - rOuter));
+    const maxCx = Math.min(CELLS_X - 1, this.cellX(x + rOuter));
+    const minCz = Math.max(0, this.cellZ(z - rOuter));
+    const maxCz = Math.min(CELLS_Z - 1, this.cellZ(z + rOuter));
     for (let cz = minCz; cz <= maxCz; cz++) {
       const dz = this.cellCenterZ(cz) - z;
       for (let cx = minCx; cx <= maxCx; cx++) {
         const dx = this.cellCenterX(cx) - x;
-        if (dx * dx + dz * dz <= r2) {
-          const i = cx + cz * CELLS_X;
-          this.heights[i] = 0;
-          // Frisch gemäht -> neues Zufalls-Tempo für dieses Nachwachsen.
+        const d2 = dx * dx + dz * dz;
+        if (d2 > rOuter2) continue;
+        // Schnitt-Höhe: 0 (voll gemäht) im Kern, im Rand-Ring per smoothstep
+        // weich auf 1 (ungemäht) auslaufend.
+        let cut: number;
+        if (d2 <= rFull2) {
+          cut = 0;
+        } else {
+          const t = (Math.sqrt(d2) - rFull) / GRASS.cutFalloff; // 0..1
+          cut = t * t * (3 - 2 * t);
+        }
+        const i = cx + cz * CELLS_X;
+        // Nur senken, nie anheben — und nur dann ein neues Nachwachs-Tempo.
+        if (cut < this.heights[i]) {
+          this.heights[i] = cut;
           this.cellRate[i] = this.randomRate();
         }
       }
@@ -260,8 +272,8 @@ export class MowGrid {
   }
 
   /**
-   * Schreibt für jedes Feld die Stufen-Farbe in die Farb-Textur und die rohen
-   * Höhen-/flatten-Werte in die Höhen-Textur. Beide Texturen nutzen dieselbe
+   * Schreibt für jedes Feld die gemischte Farbe in die Farb-Textur und die
+   * rohen Höhen-/flatten-Werte in die Höhen-Textur. Beide Texturen nutzen dieselbe
    * Zeilen-Spiegelung, damit ihre UVs zum Roboter-Weltbild passen.
    *
    * Die Farb-Ebene scheint vor allem im kurzen Gras zwischen den Halmen durch.
@@ -281,10 +293,10 @@ export class MowGrid {
       for (let cx = 0; cx < CELLS_X; cx++) {
         const i = cx + cz * CELLS_X;
         const h = this.heights[i];
-        // Höhe 0..1 in eine Stufe 0..STEPS-1 quantisieren (gleiche Bänder).
-        let step = Math.floor(h * STEPS);
-        if (step > STEPS - 1) step = STEPS - 1; // Höhe genau 1 -> letzte Stufe
-        const [r, g, b] = RAMP[step];
+        // Farbe stufenlos zwischen gemäht (hell) und voll (dunkel) mischen.
+        const r = GRASS_MOWN[0] + (GRASS_FULL[0] - GRASS_MOWN[0]) * h;
+        const g = GRASS_MOWN[1] + (GRASS_FULL[1] - GRASS_MOWN[1]) * h;
+        const b = GRASS_MOWN[2] + (GRASS_FULL[2] - GRASS_MOWN[2]) * h;
         // Streifen voll im kurzen Gras, im langen gedämpft (wie im Shader).
         const f = 1 + stripe * BLADES.stripeStrength * (1 - h * 0.6);
         const p = (cx + row * CELLS_X) * 4;

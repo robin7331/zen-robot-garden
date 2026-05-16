@@ -14,13 +14,13 @@ export const COLORS = {
   sun: '#fff4e0', // Sonnenlicht, leicht warm
   ambient: '#b9c8dd', // Füll-Licht, Himmel-Blau-Tönung
 
-  // Welt — Rasen-Farbstufen: hell-limettengrün = frisch gemäht, satt-dunkel =
-  // voll nachgewachsen. Kräftiger Kontrast für den Mäh-Spiel-Look.
-  // Diese vier Töne sind zugleich die Anzeige-Stufen des Mäh-Gitters (mowGrid).
-  grassMown: '#73a93c', // Stufe 0 — frisch gemäht (helleres Grün, nicht gelb)
-  grassShort: '#5f9534', // Stufe 1 — kurz, wächst nach
-  grassMid: '#4f872d', // Stufe 2 — mittel
-  grass: '#3f7a26', // Stufe 3 — voll nachgewachsen (satt-dunkelgrün)
+  // Welt — Rasen-Farben: hell-limettengrün = frisch gemäht, satt-dunkel =
+  // voll nachgewachsen. Kräftiger Kontrast für den Mäh-Spiel-Look. grassMown
+  // und grass sind die Eck-Farben — die Mäh-Ebene mischt stufenlos dazwischen.
+  grassMown: '#73a93c', // frisch gemäht (helleres Grün, nicht gelb)
+  grassShort: '#5f9534', // kurz, wächst nach
+  grassMid: '#4f872d', // mittel
+  grass: '#3f7a26', // voll nachgewachsen (satt-dunkelgrün)
   soil: '#6b4a2f', // Erd-Band unter dem Rasen
   rock: '#5f5953', // Fels-Schicht darunter
   twig: '#5a4327', // Ästchen — trockenes, holziges Braun
@@ -146,7 +146,12 @@ export const GRASS = {
   // wie der Schnitt. So füllt sich die Mähspur ungleichmäßig und natürlich auf
   // statt überall exakt gleichzeitig. 0 = wieder überall gleich schnell.
   regrowVariation: 0.6,
-  cutRadius: 0.2, // m — Radius der Mäh-Scheibe um den Roboter-Mittelpunkt
+  cutRadius: 0.2, // m — Radius der voll gemähten Scheibe um den Roboter-Mittelpunkt
+  // Weicher Schnitt-Rand: außerhalb von cutRadius läuft der Schnitt über diese
+  // Breite stufenlos aus (gemäht -> ungemäht). Ein harter Schnitt ergäbe an
+  // schrägen Mähspuren einen Treppen-Effekt (Raster-Aliasing); der weiche Rand
+  // gibt den Kanten-Feldern Zwischenwerte und glättet so die Spur-Kante.
+  cutFalloff: 0.14, // m — Breite des auslaufenden Schnitt-Rands
 } as const;
 
 /**
