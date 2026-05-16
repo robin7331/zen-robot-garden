@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { COLORS, SIZES } from '../tokens';
+import { SIZES } from '../tokens';
 // Vite liefert mit `?url` die fertige Adresse der GLB-Datei zurück.
 import robotModelUrl from './husqvarna-aspire-r6v-rigged.glb?url';
 
@@ -19,9 +19,6 @@ import robotModelUrl from './husqvarna-aspire-r6v-rigged.glb?url';
  * Roboter direkt auf den Rasen setzen.
  *
  * Benannte Teile für die Steuerung (RobotController):
- *   'statusLed' — kleine Leuchte oben: an solange lebendig, aus bei leerem
- *                 Akku ('dead'). Bleibt als Grundform erhalten, weil das
- *                 GLB-Modell sie nicht mitbringt.
  *   'wheelLeft'/'wheelRight' — die beiden Antriebsräder. Im GLB heißen sie
  *                 'Wheel_L'/'Wheel_R'; weiter unten werden sie nach ihrer
  *                 Welt-X-Lage in links/rechts umbenannt und drehen sich dann
@@ -70,7 +67,6 @@ export async function createRobot(): Promise<THREE.Group> {
   // — 3. Auf den Boden setzen (Unterseite auf y = 0) und horizontal zentrieren.
   box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
-  const modelTop = box.max.y - box.min.y; // Höhe über dem Boden nach dem Setzen
   model.position.x -= center.x;
   model.position.z -= center.z;
   model.position.y -= box.min.y;
@@ -117,25 +113,6 @@ export async function createRobot(): Promise<THREE.Group> {
   });
 
   robot.add(model);
-
-  // — Status-LED oben auf dem Roboter: sanftes Grün, solange er lebt; dunkel
-  //   bei leerem Akku ('dead'). Das GLB-Modell hat keine eigene LED, darum
-  //   bleibt sie eine kleine Grundform. Die Leucht-Stärke setzt der
-  //   RobotController pro Bild. —
-  const ledMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(COLORS.chargeLed),
-    emissive: new THREE.Color(COLORS.chargeLed),
-    emissiveIntensity: 1,
-    flatShading: true,
-    roughness: 0.6,
-    metalness: 0,
-  });
-  const statusLed = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.05), ledMat);
-  statusLed.name = 'statusLed';
-  // Knapp über dem höchsten Punkt des Modells, leicht nach vorne versetzt.
-  statusLed.position.set(0, modelTop + 0.015, 0.1);
-  statusLed.castShadow = true;
-  robot.add(statusLed);
 
   return robot;
 }

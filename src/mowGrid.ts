@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { COLORS, SIZES, GRASS, BLADES, TERRAIN } from './tokens';
+import { COLORS, SIZES, GRASS, BLADES, TERRAIN, GROUND } from './tokens';
 import { heightAt } from './terrain';
+import { makeGroundTexture } from './groundTexture';
 
 /**
  * Das Mäh-Gitter — die einzige sich verändernde Fläche im Garten.
@@ -141,6 +142,39 @@ export class MowGrid {
       roughness: 1,
       metalness: 0,
     });
+
+    // Boden-Textur: ein erdiges, gekörntes Dunkelgrün-Braun-Muster, das der
+    // Shader multiplikativ über die Feldfarbe legt. So ist die Ebene, die im
+    // kurz gemähten Gras zwischen den Halmen durchscheint, nicht mehr flach
+    // bunt, sondern strukturiert. onBeforeCompile statt ShaderMaterial, damit
+    // das echte Licht und der empfangene Roboter-Schatten erhalten bleiben.
+    const detail = makeGroundTexture();
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uDetail = { value: detail };
+      shader.uniforms.uDetailRepeat = {
+        value: new THREE.Vector2(
+          SIZES.lawnWidth / GROUND.tile,
+          SIZES.lawnDepth / GROUND.tile,
+        ),
+      };
+      shader.uniforms.uDetailAmount = { value: GROUND.detailAmount };
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform sampler2D uDetail;
+           uniform vec2 uDetailRepeat;
+           uniform float uDetailAmount;`,
+        )
+        // Direkt nach der Feldfarbe: die gekachelte Boden-Struktur einmischen.
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+           vec3 groundDetail = texture2D(uDetail, vMapUv * uDetailRepeat).rgb;
+           diffuseColor.rgb *= mix(vec3(1.0), groundDetail, uDetailAmount);`,
+        );
+    };
+
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.name = 'mowGrid';
     this.mesh.receiveShadow = true; // Roboter-Schatten fällt auf die Mähspur

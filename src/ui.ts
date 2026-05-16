@@ -19,6 +19,7 @@ export type RobotActivity =
   | 'seeking'
   | 'following'
   | 'charging'
+  | 'leaving'
   | 'dead'
   | 'stopped'
   | 'held';
@@ -29,6 +30,7 @@ const STATUS_TEXT: Record<RobotActivity, string> = {
   seeking: 'fährt heim',
   following: 'folgt dem Leitdraht',
   charging: 'lädt',
+  leaving: 'verlässt die Station',
   dead: 'Akku leer',
   stopped: 'steht außerhalb',
   held: 'wird getragen',

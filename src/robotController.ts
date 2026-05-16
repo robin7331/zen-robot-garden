@@ -108,8 +108,10 @@ const DRAG_LIMIT_Z = SIZES.lawnDepth / 2 - SIZES.robotLength / 2;
  *   seeking   — Akku niedrig, fährt geradeaus und sucht den Leitdraht
  *   following — folgt dem gefundenen Leitdraht heim zur Station
  *   charging  — steht angedockt (eingerastet, eingefroren) und lädt
- *   backing   — nach Draht/Stoß (oder vom Laden) ein Stück zurücksetzen
+ *   backing   — nach Draht/Stoß ein Stück zurücksetzen
  *   turning   — danach auf den Ziel-Kurs drehen
+ *   undockBack  — nach dem Laden weit rückwärts aus der Station (Messer aus)
+ *   undockPause — danach kurz still stehen; dann geht das Messer an
  *   dead      — Akku komplett leer, alles steht still
  *   stopped   — angehalten, weil aus der Draht-Schleife entkommen
  *   held      — wird gerade mit dem Zeiger gezogen
@@ -121,6 +123,8 @@ type State =
   | 'charging'
   | 'backing'
   | 'turning'
+  | 'undockBack'
+  | 'undockPause'
   | 'dead'
   | 'stopped'
   | 'held';
@@ -195,8 +199,6 @@ export class RobotController {
   private readonly wheelLeftMesh: THREE.Object3D | null;
   private readonly wheelRightMesh: THREE.Object3D | null;
   private readonly bladeMesh: THREE.Object3D | null;
-  // Material der Status-LED — an solange lebendig, aus bei 'dead'.
-  private readonly ledMat: THREE.MeshStandardMaterial | null;
 
   // Motor-Tempo der beiden Räder (Boden-Tempo in m/s).
   private speedLeft = 0;
@@ -258,9 +260,6 @@ export class RobotController {
     this.wheelLeftMesh = view.getObjectByName('wheelLeft') ?? null;
     this.wheelRightMesh = view.getObjectByName('wheelRight') ?? null;
     this.bladeMesh = view.getObjectByName('blade') ?? null;
-    const ledMesh = view.getObjectByName('statusLed') as THREE.Mesh | undefined;
-    this.ledMat =
-      (ledMesh?.material as THREE.MeshStandardMaterial | undefined) ?? null;
 
     // Dynamischer Körper mit vollen 6 Freiheitsgraden — er kann jetzt
     // klettern, sich neigen und (auf einem Steilhang) sogar kippen. Etwas
@@ -290,6 +289,16 @@ export class RobotController {
         collisionGroups(GROUP.robot, GROUP.wall | GROUP.twig),
       );
     this.collider = world.createCollider(colliderDesc, this.body);
+
+    // Der Roboter startet ANGEDOCKT in der Ladestation: voller Akku, Körper
+    // kinematisch in der Andock-Pose eingefroren. Schon der erste think()-
+    // Schritt sieht den vollen Akku und fährt ihn rückwärts aus der Station
+    // heraus — genau wie nach einem normalen Ladevorgang.
+    this.state = 'charging';
+    this.battery = 1;
+    this.frozenPos = spawn.pos;
+    this.frozenRot = spawn.rot;
+    this.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
 
     this.sync(0); // Sicht-Modell sofort an die Startpose setzen
   }
@@ -344,6 +353,9 @@ export class RobotController {
         return 'stopped';
       case 'held':
         return 'held';
+      case 'undockBack':
+      case 'undockPause':
+        return 'leaving';
       case 'backing':
       case 'turning':
         return this.resumeState === 'driving' ? 'mowing' : 'seeking';
@@ -424,16 +436,14 @@ export class RobotController {
     if (this.bladeMesh && this.bladesOn()) {
       this.bladeMesh.rotation.y += BLADE_SPIN * frameDt;
     }
-    // Status-LED: leuchtet stetig, solange der Roboter lebt; aus bei 'dead'.
-    if (this.ledMat) {
-      this.ledMat.emissiveIntensity = this.state === 'dead' ? 0 : 1;
-    }
   }
 
   /**
    * Mäht der Roboter gerade? Klingen an beim Fahren und beim Zurücksetzen/
-   * Drehen am Draht — Drehen mäht also mit. Nur auf der Heimfahrt bleiben sie
-   * ganz aus (die Reaktion kehrt in 'seeking' zurück, nicht in 'driving').
+   * Drehen am Draht — Drehen mäht also mit. Aus bleiben sie auf der Heimfahrt
+   * (die Reaktion kehrt in 'seeking' zurück, nicht in 'driving') und beim
+   * Ausfahren aus der Station: undockBack/undockPause fallen durch auf false —
+   * das Messer geht erst an, wenn danach 'turning' beginnt.
    */
   private bladesOn(): boolean {
     if (this.state === 'driving') return true;
@@ -645,15 +655,44 @@ export class RobotController {
       }
 
       case 'charging':
-        // Eingerastet stehen und laden. Voll -> dynamisch werden und
-        // rückwärts aus der Station heraus, dann weitermähen.
+        // Eingerastet stehen und laden. Voll -> dynamisch werden und ins
+        // Ausfahren wechseln (undockBack). Gilt auch für den Szenenstart:
+        // der Roboter startet angedockt mit vollem Akku und fährt so heraus.
         this.targetLeft = 0;
         this.targetRight = 0;
         if (this.battery >= BATTERY.full) {
           this.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
           this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
           this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-          this.startReaction(this.randomTurnTarget(), 'driving');
+          this.state = 'undockBack';
+          this.stateTimer = DRIVE.undockBackupTime;
+        }
+        break;
+
+      case 'undockBack':
+        // Weit rückwärts aus der Station heraus auf den Rasen — das Messer
+        // bleibt dabei aus (bladesOn deckt undockBack nicht). Danach: kurz
+        // still stehen.
+        this.targetLeft = -DRIVE.reverseSpeed;
+        this.targetRight = -DRIVE.reverseSpeed;
+        if (this.stateTimer <= 0) {
+          this.zeroMotors();
+          this.state = 'undockPause';
+          this.stateTimer = DRIVE.undockPauseTime;
+        }
+        break;
+
+      case 'undockPause':
+        // Wie ein echter Mähroboter: kurz still stehen. Ist die Pause vorbei,
+        // wechselt er in 'turning' — ab da läuft das Messer (bladesOn deckt
+        // 'turning' mit resumeState 'driving') — und dreht in einen
+        // Zufallskurs Richtung Abfahrt.
+        this.targetLeft = 0;
+        this.targetRight = 0;
+        if (this.stateTimer <= 0) {
+          this.turnTargetYaw = this.randomTurnTarget();
+          this.resumeState = 'driving';
+          this.state = 'turning';
         }
         break;
 

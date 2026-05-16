@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { COLORS } from '../tokens';
 // Vite liefert mit `?url` die fertige Adresse der GLB-Datei zurück.
 import stationModelUrl from './husqvarna-ladestation.glb?url';
 
@@ -17,10 +16,6 @@ import stationModelUrl from './husqvarna-ladestation.glb?url';
  *   -Z = hinten (Rückwand)
  *   Der Gruppen-Ursprung liegt am Boden (y = 0), mittig.
  *
- * Benannte Teile für die Steuerung:
- *   'led' — kleine Leuchte oben: leuchtet beim Laden. Das GLB-Modell bringt
- *           keine eigene LED mit, darum bleibt sie eine kleine Grundform.
- *           Die Leucht-Stärke setzt main.ts pro Bild.
  */
 
 // — Maße (Meter) ———————————————————————————————————————————————————
@@ -70,7 +65,6 @@ export async function createChargingStationMesh(): Promise<THREE.Group> {
   // — 3. Auf den Boden setzen (Unterseite auf y = 0) und horizontal zentrieren.
   box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
-  const modelTop = box.max.y - box.min.y; // Höhe über dem Boden nach dem Setzen
   model.position.x -= center.x;
   model.position.z -= center.z;
   model.position.y -= box.min.y;
@@ -84,23 +78,6 @@ export async function createChargingStationMesh(): Promise<THREE.Group> {
   });
 
   station.add(model);
-
-  // — Lade-Leuchte oben hinten auf der Station: leuchtet beim Laden, sonst
-  //   aus. Das GLB-Modell hat keine eigene LED, darum bleibt sie eine kleine
-  //   Grundform. Die Leucht-Stärke (emissiveIntensity) setzt main.ts pro Bild. —
-  const ledMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(COLORS.chargeLed),
-    emissive: new THREE.Color(COLORS.chargeLed),
-    emissiveIntensity: 0, // aus, solange nicht geladen wird
-    flatShading: true,
-    roughness: 0.6,
-  });
-  const led = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.04), ledMat);
-  led.name = 'led';
-  // Knapp über dem Modell, nach hinten (-Z) versetzt.
-  led.position.set(0, modelTop + 0.02, -STATION.targetDepth * 0.3);
-  led.castShadow = true;
-  station.add(led);
 
   return station;
 }

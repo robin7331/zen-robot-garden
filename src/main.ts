@@ -101,18 +101,18 @@ async function main(): Promise<void> {
     .applyQuaternion(station.quaternion)
     .add(stationPos);
 
-  // Lade-Leuchte der Station — wird pro Bild auf/aus geschaltet.
-  const ledMat = (station.getObjectByName('led') as THREE.Mesh)
-    .material as THREE.MeshStandardMaterial;
-
   // Roboter: Sicht-Modell in die Szene, Steuerung an die Physik koppeln.
   // createRobot() lädt erst das GLB-Modell, darum await.
   const robot = await createRobot();
   scene.add(robot);
+  // Der Roboter startet ANGEDOCKT in der Ladestation und fährt rückwärts
+  // heraus. yaw = +π/2: er blickt nach +X in die Station hinein (so wie ihn
+  // das letzte, gerade Leitdraht-Stück hineinführt) — rückwärts heißt damit
+  // -X, hinaus auf den Rasen.
   const controller = new RobotController(
     world,
     robot,
-    { x: -0.8, z: 0.6, yaw: -0.6 },
+    { x: dock.x, z: dock.z, yaw: Math.PI / 2 },
     { x: dock.x, z: dock.z },
   );
   const robotHandle = controller.colliderHandle;
@@ -251,10 +251,6 @@ async function main(): Promise<void> {
     grassField.update(elapsed);
     batteryUI.update(controller.batteryLevel, controller.activity);
 
-    // Lade-Leuchte: pulsiert sanft, solange der Roboter andockt und lädt.
-    ledMat.emissiveIntensity = controller.isCharging
-      ? 0.9 + 0.5 * Math.sin(now * 0.006)
-      : 0;
     updateControls(controls, camera); // Damping + Rubber Banding
     renderer.render(scene, camera);
   }

@@ -32,7 +32,6 @@ export const COLORS = {
 
   // Ladestation
   station: '#6f6a63', // Gehäuse — gedecktes Grau
-  chargeLed: '#7dffb4', // Lade-Leuchte — sanftes Grün
 
   // UI / Akku-Anzeige
   batteryFull: '#7dffb4', // voller Akku — sanftes Grün (wie die Lade-Leuchte)
@@ -98,6 +97,13 @@ export const DRIVE = {
   wheelAccel: 0.9, // m/s² — wie schnell die Rad-Motoren ihr Tempo ändern (Trägheit)
 
   backupTime: 0.8, // s — wie lang nach einem Stoß gegen ein Hindernis zurückgesetzt wird
+  // Beim Verlassen der Ladestation (Akku voll oder beim Szenenstart) setzt der
+  // Roboter deutlich weiter zurück als nach einem Stoß — erst gut aus der
+  // Station heraus auf den Rasen, dann dreht er in einen Zufallskurs.
+  undockBackupTime: 3.2, // s — Zurücksetzen aus der Ladestation
+  // Danach steht der Roboter wie ein echter Mähroboter kurz still: er schaltet
+  // das Messer ein und dreht erst dann in seinen Abfahrt-Kurs.
+  undockPauseTime: 1.2, // s — Stand-Pause nach dem Ausfahren, vor dem Drehen
 
   // — Heimfahren über den Leitdraht ——————————————————————————————————
   followLookahead: 0.35, // m — Vorausschau-Punkt ("Carrot") des Leitdraht-Linienfolgers
@@ -177,7 +183,7 @@ export const BLADES = {
   flattenRadius: 0.25, // m — Radius der Plattdrück-Scheibe unter dem Roboter
   flattenRecoverTime: 1.5, // s — wie lang plattgedrücktes Gras zum Aufrichten braucht
   windSpeed: 1.2, // wie schnell die Wind-Welle schwingt (zeitlich)
-  windStrength: 0.46, // Wind-Stärke — Anteil der Halm-Höhe, um den die Spitze wandert
+  windStrength: 0.36, // Wind-Stärke — Anteil der Halm-Höhe, um den die Spitze wandert
   // Wind als wandernde Welle: die Schwing-Phase hängt von der Position längs
   // des Windes ab, darum schwingen Nachbar-Halme synchron und ferne versetzt —
   // eine sichtbare Welle, die über den Rasen läuft, statt gleichförmigem Wehen.
@@ -191,6 +197,27 @@ export const BLADES = {
   // "frisch gemähter Rasen"-Look. Weltachsen-parallele Sinus-Bänder.
   stripeWidth: 0.55, // m — Breite eines hellen bzw. dunklen Streifens
   stripeStrength: 0.16, // wie kräftig die Streifen aufhellen/abdunkeln
+} as const;
+
+/**
+ * Boden-Textur — das erdige Muster der mowGrid-Ebene UNTER dem Gras.
+ *
+ * Die Farb-Ebene scheint im kurz gemähten Gras zwischen den Halmen durch und
+ * war dort bisher eine flache Farbe. Jetzt liegt darüber eine prozedural
+ * erzeugte Textur: ein dunkelgrün-braunes, gekörntes Erd-/Moos-Muster (siehe
+ * groundTexture.ts). Der mowGrid-Shader legt sie multiplikativ über die
+ * Feldfarbe — sichtbar wird sie vor allem in den frischen Mähspuren. Alle
+ * Werte einstellbar.
+ */
+export const GROUND = {
+  earthGreen: '#4f6234', // moosiges Dunkelgrün — der grünere Teil des Bodens
+  earthBrown: '#5f4a2c', // trockenes Erdbraun — der bräunliche Teil
+  textureSize: 512, // px — Kantenlänge der erzeugten (quadratischen) Textur
+  tile: 2.5, // m — Kantenlänge einer Textur-Kachel auf dem Rasen
+  // Wie stark die Boden-Struktur die Feldfarbe überlagert: 0 = aus (flache
+  // Farbe wie bisher), 1 = volle Wirkung (Boden wird deutlich dunkler/erdiger).
+  detailAmount: 0.6,
+  seed: 1337, // fester Seed -> die Textur sieht bei jedem Laden gleich aus
 } as const;
 
 /**
