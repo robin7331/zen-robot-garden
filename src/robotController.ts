@@ -83,7 +83,10 @@ const BLADE_SPIN = 6; // rad/s — Drehzahl der Mähklinge beim Fahren
 
 // — Heimfahren ————————————————————————————————————————————————————
 const STEER_GAIN = 1.6; // wie kräftig der Roboter zu seinem Ziel einlenkt
-const DOCK_RADIUS = 0.18; // so nah an der Station gilt der Roboter als angedockt
+// So nah am Dock rastet der Roboter ein. Klein gehalten, damit das Einrasten
+// nicht als Sprung auffällt — der Roboter fährt fast ganz heran und schnappt
+// erst auf den letzten Zentimetern in die Andock-Pose.
+const DOCK_RADIUS = 0.05;
 
 // — Drehen ————————————————————————————————————————————————————————
 const TURN_DONE = 0.1; // rad — so nah am Ziel-Kurs gilt eine Drehung als fertig
@@ -621,7 +624,10 @@ export class RobotController {
     ) {
       // Beim Folgen danach den Leitdraht neu suchen, sonst weiter wie bisher.
       const resume: State = this.state === 'following' ? 'seeking' : this.state;
-      this.startReaction(this.randomTurnTarget(), resume);
+      this.startReaction(
+        this.randomTurnTarget(DRIVE.collisionTurnMin, DRIVE.collisionTurnMax),
+        resume,
+      );
     }
 
     // Begrenzungsdraht — beim Mähen UND Heimfahren prüfen, NICHT beim Folgen
@@ -634,8 +640,12 @@ export class RobotController {
       }
       if (!this.frontInside) {
         // Vordere Spule hat den Draht überquert -> zurücksetzen + zufällig
-        // drehen, exakt dieselbe Reaktion wie bei einem Stoß.
-        this.startReaction(this.randomTurnTarget(), this.state);
+        // drehen, wie nach einem Stoß — aber mit kleinerem Winkel-Bereich,
+        // damit er sich am Draht sanft korrigiert statt komplett umzudrehen.
+        this.startReaction(
+          this.randomTurnTarget(DRIVE.wireTurnMin, DRIVE.wireTurnMax),
+          this.state,
+        );
       }
     }
 
@@ -716,7 +726,10 @@ export class RobotController {
         this.targetLeft = 0;
         this.targetRight = 0;
         if (this.stateTimer <= 0) {
-          this.turnTargetYaw = this.randomTurnTarget();
+          this.turnTargetYaw = this.randomTurnTarget(
+            DRIVE.collisionTurnMin,
+            DRIVE.collisionTurnMax,
+          );
           this.resumeState = 'driving';
           this.undockBladeArm = true;
           this.state = 'turning';
@@ -771,14 +784,11 @@ export class RobotController {
    * Zufälliger Ziel-Kurs relativ zum aktuellen Kurs — verwendet nach einem
    * Stoß, nach einer Begrenzungsdraht-Überquerung und beim Verlassen der
    * Station. Wie bei einem echten Mähroboter ist die Drehung reiner Zufall;
-   * sie zeigt nicht zwingend ins Feld zurück.
+   * sie zeigt nicht zwingend ins Feld zurück. Der Winkel-Bereich (min..max)
+   * ist je Anlass anders — am Draht kleiner, damit er nicht überdreht.
    */
-  private randomTurnTarget(): number {
-    const amount = THREE.MathUtils.lerp(
-      DRIVE.collisionTurnMin,
-      DRIVE.collisionTurnMax,
-      Math.random(),
-    );
+  private randomTurnTarget(min: number, max: number): number {
+    const amount = THREE.MathUtils.lerp(min, max, Math.random());
     const dir = Math.random() < 0.5 ? -1 : 1;
     return wrapPi(this.currentYaw() + dir * amount);
   }

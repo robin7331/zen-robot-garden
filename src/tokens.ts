@@ -113,12 +113,18 @@ export const DRIVE = {
   dockDropRadius: 0.45, // m — Fang-Radius: wird der Roboter so nah an der Station
   //                       abgesetzt, dockt er an (≈ Stations-Grundfläche)
 
-  // Drehung nach einem Stoß gegen ein Hindernis ODER nach dem Überqueren des
-  // Begrenzungsdrahts: in beiden Fällen ein zufälliger Winkel relativ zum
-  // aktuellen Kurs — wie bei einem echten Mähroboter, der die Draht-Richtung
-  // gar nicht kennt und sich rein auf den Zufall verlässt.
+  // Drehung nach einem Stoß gegen ein Hindernis: ein zufälliger Winkel relativ
+  // zum aktuellen Kurs — wie bei einem echten Mähroboter, der sich rein auf
+  // den Zufall verlässt.
   collisionTurnMin: 1.2, // rad — kleinste Drehung (~69°)
   collisionTurnMax: 3.0, // rad — größte Drehung (~172°)
+  // Drehung nach dem Überqueren des Begrenzungsdrahts: gleiche Zufalls-Logik,
+  // aber ein kleinerer Bereich. Trifft er den Draht frontal, reicht eine
+  // kleine Drehung oft nicht und er kreuzt nochmal — mit großen Winkeln würde
+  // sich das zu einem Über-180°-Umdrehen aufsummieren. Kleiner Bereich =>
+  // sanftes Heran-Tasten statt komplettem Umdrehen.
+  wireTurnMin: 0.45, // rad — kleinste Drehung am Draht (~26°)
+  wireTurnMax: 2.4, // rad — größte Drehung am Draht (~137°)
 } as const;
 
 /**
