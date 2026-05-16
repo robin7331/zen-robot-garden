@@ -1,15 +1,16 @@
 import { COLORS } from './tokens';
 
 /**
- * Baut das Akku-Widget — ein kleines HTML-Overlay über dem 3D-Canvas.
+ * Die HTML-Overlays über dem 3D-Canvas.
  *
- * Bewusst kein three.js, sondern eine ganz normale `<div>` vor dem Canvas:
- * der Text ist gestochen scharf, es lässt sich mit Maus und Finger gut
- * bedienen, und es stört die Render-Schleife nicht. `main.ts` ruft nur einmal
- * pro Bild `update()` auf.
+ * Bewusst kein three.js, sondern ganz normale `<div>`s vor dem Canvas: der
+ * Text ist gestochen scharf, lässt sich mit Maus und Finger gut bedienen und
+ * stört die Render-Schleife nicht. `main.ts` ruft pro Bild nur `update()` auf.
  *
- * Es ist absichtlich das einzige UI-Element — ruhig und "zen". Ein Einstell-
- * Panel (Tempo, Nachwachs-Rate) wäre ein eigener, späterer Schritt.
+ *   - Akku-Widget: der ruhige, "zen"-taugliche Anzeiger oben links.
+ *   - FPS-Anzeige: eine kleine Entwickler-Hilfe oben rechts (Bilder/Sekunde).
+ *
+ * Ein Einstell-Panel (Tempo, Nachwachs-Rate) wäre ein eigener, späterer Schritt.
  */
 
 /** Grobe Tätigkeit des Roboters — bestimmt den Status-Text. */
@@ -150,6 +151,68 @@ export function createBatteryUI(): BatteryUI {
       percent.textContent = `${Math.round(clamped * 100)}%`;
       status.textContent = STATUS_TEXT[activity];
       battery.classList.toggle('is-charging', activity === 'charging');
+    },
+  };
+}
+
+// Styles der FPS-Anzeige — dezent, in der Optik des Akku-Widgets.
+const FPS_CSS = `
+#fps {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  pointer-events: none; /* Klicks fallen durch auf den Canvas */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.fps {
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(30, 34, 42, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  /* Ziffern gleich breit -> die Zahl zappelt beim Aktualisieren nicht. */
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+`;
+
+/** Die FPS-Anzeige — `main.ts` braucht nur noch `update()`. */
+export interface FpsUI {
+  /** Verrechnet die Dauer eines Bildes (Sekunden). Einmal pro Bild aufrufen. */
+  update(frameDt: number): void;
+}
+
+/** Erzeugt die FPS-Anzeige und hängt sie ins Dokument. */
+export function createFpsUI(): FpsUI {
+  const style = document.createElement('style');
+  style.textContent = FPS_CSS;
+  document.head.appendChild(style);
+
+  const ui = document.createElement('div');
+  ui.id = 'fps';
+  ui.innerHTML = `<div class="fps">– FPS</div>`;
+  document.body.appendChild(ui);
+  const label = ui.querySelector('.fps') as HTMLElement;
+
+  // Geglättete Bilder/Sekunde: ein exponentieller Mittelwert dämpft das
+  // Zappeln einzelner Bilder. Den DOM-Text malen wir nur ein paar Mal pro
+  // Sekunde neu — die Zahl bleibt ruhig lesbar.
+  let smoothFps = 60;
+  let sinceRedraw = 0;
+
+  return {
+    update(frameDt: number): void {
+      if (frameDt > 0) {
+        smoothFps += (1 / frameDt - smoothFps) * 0.1;
+      }
+      sinceRedraw += frameDt;
+      if (sinceRedraw >= 0.25) {
+        sinceRedraw = 0;
+        label.textContent = `${Math.round(smoothFps)} FPS`;
+      }
     },
   };
 }

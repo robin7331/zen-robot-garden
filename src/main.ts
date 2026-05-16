@@ -20,7 +20,7 @@ import {
   STATION,
 } from './models/chargingStation';
 import { SIZES } from './tokens';
-import { createBatteryUI } from './ui';
+import { createBatteryUI, createFpsUI } from './ui';
 
 /**
  * Einstiegspunkt: setzt Szene, Kamera, Garten und Physik zusammen und startet
@@ -88,8 +88,9 @@ async function main(): Promise<void> {
   // Ästchen-Verwaltung.
   const twigField = new TwigField(world, scene);
 
-  // Akku-Anzeige (HTML-Overlay über dem Canvas).
+  // Akku-Anzeige + FPS-Zähler (HTML-Overlays über dem Canvas).
   const batteryUI = createBatteryUI();
+  const fpsUI = createFpsUI();
 
   // Kollisions-Ereignisse aus Rapier — der "Stoßsensor" des Roboters.
   const events = new RAPIER.EventQueue(true);
@@ -184,6 +185,7 @@ async function main(): Promise<void> {
     const now = performance.now();
     let frameDt = (now - lastTime) / 1000;
     lastTime = now;
+    fpsUI.update(frameDt); // echte Bild-Zeitspanne, vor dem Deckeln messen
     if (frameDt > 0.1) frameDt = 0.1; // nach Tab-Wechsel nicht "explodieren"
     elapsed += frameDt;
 
