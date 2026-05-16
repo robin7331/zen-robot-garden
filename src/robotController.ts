@@ -218,6 +218,13 @@ export class RobotController {
   // Wird von außen gesetzt, wenn Rapier eine Kollision meldet (Stoßsensor).
   private bumped = false;
 
+  // Messer-Anlauf nach dem Ausfahren aus der Station: Der Roboter dreht und
+  // fährt erst ein Stück, bevor das Mäh-Messer angeht.
+  //   undockBladeArm — true während der Ausfahrt-Drehung (Messer noch aus)
+  //   bladeDelay     — Restzeit der Anlauf-Fahrt im 'driving' (Messer noch aus)
+  private undockBladeArm = false;
+  private bladeDelay = 0;
+
   // Akku-Stand 0..1 und der Andock-Punkt der Ladestation (Weltkoordinaten).
   private battery = 1;
   private readonly dockX: number;
@@ -335,9 +342,10 @@ export class RobotController {
 
   /**
    * Grobe Tätigkeit für UI-Anzeige und Mäh-Gitter. Der Roboter mäht beim
-   * Fahren — auch beim Zurücksetzen und Drehen am Begrenzungsdraht. Allein
-   * auf der Heimfahrt mäht er gar nicht (weder geradeaus noch in der Kurve):
-   * dort kehrt eine Ausweich-Reaktion in 'seeking' zurück statt in 'driving'.
+   * Fahren — auch beim Zurücksetzen und Drehen am Begrenzungsdraht. Nicht
+   * gemäht wird auf der Heimfahrt (dort kehrt eine Ausweich-Reaktion in
+   * 'seeking' zurück statt in 'driving') und beim Verlassen der Station
+   * inklusive der Anlauf-Fahrt, bis das Messer angeht ('leaving').
    */
   get activity(): RobotActivity {
     switch (this.state) {
@@ -358,9 +366,12 @@ export class RobotController {
         return 'leaving';
       case 'backing':
       case 'turning':
+        // Die Ausfahrt-Drehung gehört noch zum Verlassen der Station.
+        if (this.undockBladeArm) return 'leaving';
         return this.resumeState === 'driving' ? 'mowing' : 'seeking';
       default:
-        return 'mowing'; // driving
+        // driving — bis das Messer nach dem Anlauf angeht, mäht er noch nicht.
+        return this.bladeDelay > 0 ? 'leaving' : 'mowing';
     }
   }
 
@@ -442,10 +453,13 @@ export class RobotController {
    * Mäht der Roboter gerade? Klingen an beim Fahren und beim Zurücksetzen/
    * Drehen am Draht — Drehen mäht also mit. Aus bleiben sie auf der Heimfahrt
    * (die Reaktion kehrt in 'seeking' zurück, nicht in 'driving') und beim
-   * Ausfahren aus der Station: undockBack/undockPause fallen durch auf false —
-   * das Messer geht erst an, wenn danach 'turning' beginnt.
+   * Ausfahren aus der Station: undockBack/undockPause fallen durch auf false,
+   * die Ausfahrt-Drehung deckt `undockBladeArm` ab, und auch die ersten
+   * `bladeStartDelay` Sekunden Fahrt danach (bladeDelay > 0) bleibt das
+   * Messer noch aus — es geht erst nach kurzer Anlauf-Fahrt an.
    */
   private bladesOn(): boolean {
+    if (this.undockBladeArm || this.bladeDelay > 0) return false;
     if (this.state === 'driving') return true;
     if (this.state === 'backing' || this.state === 'turning') {
       return this.resumeState === 'driving';
@@ -564,7 +578,13 @@ export class RobotController {
     if (this.state === 'charging') {
       this.battery = Math.min(1, this.battery + BATTERY.charge * dt);
     } else {
-      this.battery = Math.max(0, this.battery - BATTERY.drain * dt);
+      // Das Mäh-Messer ist der große Stromfresser: läuft es nicht (Heimfahrt
+      // zum Leitdraht, Ausfahren aus der Station), zieht der Roboter nur den
+      // Bruchteil bladeOffFactor des normalen Verbrauchs.
+      const drain = this.bladesOn()
+        ? BATTERY.drain
+        : BATTERY.drain * BATTERY.bladeOffFactor;
+      this.battery = Math.max(0, this.battery - drain * dt);
       // Mehr-Verbrauch bergauf: zeigt die Nase nach oben und treiben die
       // Motoren vorwärts, zieht der Roboter unter Last zusätzlich Strom.
       const fwdMotor = (this.speedLeft + this.speedRight) / 2;
@@ -624,6 +644,8 @@ export class RobotController {
     }
 
     this.stateTimer -= dt;
+    // Anlauf-Fahrt nach dem Ausfahren: Restzeit bis das Messer angeht.
+    if (this.bladeDelay > 0) this.bladeDelay -= dt;
 
     switch (this.state) {
       case 'driving':
@@ -671,27 +693,31 @@ export class RobotController {
 
       case 'undockBack':
         // Weit rückwärts aus der Station heraus auf den Rasen — das Messer
-        // bleibt dabei aus (bladesOn deckt undockBack nicht). Danach: kurz
-        // still stehen.
-        this.targetLeft = -DRIVE.reverseSpeed;
-        this.targetRight = -DRIVE.reverseSpeed;
+        // bleibt dabei aus (bladesOn deckt undockBack nicht). Am Ende NICHT
+        // hart stoppen: nur das Wunsch-Tempo auf 0 setzen, dann rollt der
+        // Roboter über rampMotors + Rad-Reibung sanft aus (kein zeroMotors).
         if (this.stateTimer <= 0) {
-          this.zeroMotors();
+          this.targetLeft = 0;
+          this.targetRight = 0;
           this.state = 'undockPause';
           this.stateTimer = DRIVE.undockPauseTime;
+        } else {
+          this.targetLeft = -DRIVE.reverseSpeed;
+          this.targetRight = -DRIVE.reverseSpeed;
         }
         break;
 
       case 'undockPause':
         // Wie ein echter Mähroboter: kurz still stehen. Ist die Pause vorbei,
-        // wechselt er in 'turning' — ab da läuft das Messer (bladesOn deckt
-        // 'turning' mit resumeState 'driving') — und dreht in einen
-        // Zufallskurs Richtung Abfahrt.
+        // dreht er in einen Zufallskurs Richtung Abfahrt — das Messer bleibt
+        // dabei noch aus (undockBladeArm) und geht erst nach der Anlauf-Fahrt
+        // im 'driving' an.
         this.targetLeft = 0;
         this.targetRight = 0;
         if (this.stateTimer <= 0) {
           this.turnTargetYaw = this.randomTurnTarget();
           this.resumeState = 'driving';
+          this.undockBladeArm = true;
           this.state = 'turning';
         }
         break;
@@ -709,7 +735,15 @@ export class RobotController {
         this.turnDir = diff >= 0 ? 1 : -1;
         this.targetLeft = DRIVE.turnSpeed * this.turnDir;
         this.targetRight = -DRIVE.turnSpeed * this.turnDir;
-        if (Math.abs(diff) < TURN_DONE) this.state = this.resumeState;
+        if (Math.abs(diff) < TURN_DONE) {
+          this.state = this.resumeState;
+          // War das die Ausfahrt-Drehung? Dann jetzt losfahren — das Messer
+          // geht aber erst nach bladeStartDelay Sekunden Anlauf-Fahrt an.
+          if (this.undockBladeArm) {
+            this.undockBladeArm = false;
+            this.bladeDelay = DRIVE.bladeStartDelay;
+          }
+        }
         break;
       }
     }

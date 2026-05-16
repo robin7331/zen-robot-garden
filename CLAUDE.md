@@ -106,8 +106,8 @@ So findet der Roboter heim — genau wie ein echter Mähroboter:
 
 Geht der Akku doch einmal ganz auf **0** (zum Beispiel, weil der Roboter
 unterwegs oft angestoßen ist), bleibt er stehen — er ist **leer** ("dead").
-Seine kleine grüne Leuchte oben geht dann **aus**. Helfen kann man nur, indem
-man ihn mit dem Finger zurück auf die Ladestation **zieht**.
+Helfen kann man nur, indem man ihn mit dem Finger zurück auf die
+Ladestation **zieht**.
 
 Beide Drähte bestehen aus **Nägeln**: geordnete Punkte, zwischen denen der
 Draht schnurgerade läuft. Die Richtung ändert sich nur an einem Nagel. Die

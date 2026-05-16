@@ -101,9 +101,12 @@ export const DRIVE = {
   // Roboter deutlich weiter zurück als nach einem Stoß — erst gut aus der
   // Station heraus auf den Rasen, dann dreht er in einen Zufallskurs.
   undockBackupTime: 3.2, // s — Zurücksetzen aus der Ladestation
-  // Danach steht der Roboter wie ein echter Mähroboter kurz still: er schaltet
-  // das Messer ein und dreht erst dann in seinen Abfahrt-Kurs.
+  // Danach steht der Roboter wie ein echter Mähroboter kurz still, bevor er in
+  // seinen Abfahrt-Kurs dreht.
   undockPauseTime: 1.2, // s — Stand-Pause nach dem Ausfahren, vor dem Drehen
+  // Wie ein echter Mähroboter: er dreht, fährt los — und schaltet das Messer
+  // erst nach dieser kurzen Anlauf-Fahrt ein (nicht schon im Stand).
+  bladeStartDelay: 1.0, // s — Fahrt nach dem Losfahren, bevor das Messer angeht
 
   // — Heimfahren über den Leitdraht ——————————————————————————————————
   followLookahead: 0.35, // m — Vorausschau-Punkt ("Carrot") des Leitdraht-Linienfolgers
@@ -137,6 +140,10 @@ export const BATTERY = {
   // anteilig zur Bergauf-Komponente. Ein hügeliger Garten schickt den
   // Roboter so etwas früher heim.
   climbDrain: 0.03, // pro Sekunde extra bei voller Bergauf-Fahrt
+  // Das Mäh-Messer ist der große Stromfresser. Läuft es nicht (Heimfahrt zum
+  // Leitdraht, Ausfahren aus der Station), zieht der Roboter nur diesen
+  // Bruchteil des normalen Verbrauchs.
+  bladeOffFactor: 1 / 3,
 } as const;
 
 /**
