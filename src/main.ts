@@ -9,6 +9,7 @@ import {
 } from './camera';
 import { createGarden } from './garden';
 import { MowGrid } from './mowGrid';
+import { GrassField } from './grass';
 import { createWireMeshes } from './wire';
 import { createRobot } from './models/robot';
 import { initPhysics, createWorld, addGround } from './physics';
@@ -45,6 +46,11 @@ async function main(): Promise<void> {
   // kurz, überall wächst das Gras langsam nach (Farbe = Grashöhe).
   const mowGrid = new MowGrid();
   scene.add(mowGrid.mesh);
+
+  // Echte 3D-Grashalme über dem Gitter: der Shader liest Höhe und Plattdrücken
+  // direkt aus mowGrid.heightTexture. Die Farb-Ebene scheint dazwischen durch.
+  const grassField = new GrassField(mowGrid);
+  scene.add(grassField.mesh);
 
   // Physik-Welt + Boden. Die Rasen-Grenze ist der Begrenzungsdraht (wire.ts),
   // keine Wand — der Roboter spürt ihn mit seinen Spulen-Sensoren.
@@ -170,6 +176,7 @@ async function main(): Promise<void> {
   const FIXED_DT = world.timestep;
   let accumulator = 0;
   let lastTime = performance.now();
+  let elapsed = 0; // aufsummierte Spielzeit in Sekunden (für die Wind-Welle)
 
   function animate(): void {
     requestAnimationFrame(animate);
@@ -178,6 +185,7 @@ async function main(): Promise<void> {
     let frameDt = (now - lastTime) / 1000;
     lastTime = now;
     if (frameDt > 0.1) frameDt = 0.1; // nach Tab-Wechsel nicht "explodieren"
+    elapsed += frameDt;
 
     // Physik in festen Schritten nachholen.
     accumulator += frameDt;
@@ -201,7 +209,13 @@ async function main(): Promise<void> {
     if (controller.activity === 'mowing') {
       mowGrid.cutAt(robot.position.x, robot.position.z);
     }
+    // Plattdrücken: solange der Roboter mit seinen Rädern auf dem Rasen steht
+    // (nicht angehoben), klappen die Halme unter ihm platt.
+    if (!draggingRobot) {
+      mowGrid.flattenAt(robot.position.x, robot.position.z);
+    }
     mowGrid.update(frameDt);
+    grassField.update(elapsed);
     batteryUI.update(controller.batteryLevel, controller.activity);
 
     // Lade-Leuchte: pulsiert sanft, solange der Roboter andockt und lädt.

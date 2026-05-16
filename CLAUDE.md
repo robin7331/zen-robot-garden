@@ -50,8 +50,10 @@ Die Werte (Höchstgeschwindigkeit, Beschleunigung, Drehgeschwindigkeit) sollen
   - Dieses Gitter ist gleichzeitig die **Mähspur** — man sieht, wo der Roboter war.
 - Gemähtes Gras **wächst langsam wieder nach**. Die Nachwachs-Geschwindigkeit ist
   **einstellbar**. So hat der Roboter nie wirklich "fertig" — schön zen und endlos.
-- Am Anfang zeigen wir die Grashöhe nur über die **Farbe** (lang = dunkler,
-  kurz = heller). Echtes 3D-Gras kommt später.
+- Die Grashöhe zeigen wir mit **echten 3D-Grashalmen**: viele kleine Halme
+  über dem Gitter, die der Roboter kurz mäht, beim Drüberfahren platt drückt
+  und die langsam nachwachsen. Eine Farb-Ebene scheint zwischen den Halmen
+  durch (lang = dunkler, kurz = heller).
 
 ### Der Begrenzungsdraht ("fence wire")
 
@@ -157,11 +159,11 @@ Fertige, detaillierte 3D-Modelle kommen erst später.
 
 **Jetzt zuerst:** sauberes, realistisches **Fahren** (Physik, Differentialantrieb,
 Trägheit, Abprallen) und die **3D-Szene** (Garten aus Grundformen, Dreh-Kamera,
-Mähspur über Farbe).
+Mähspur). Echtes **3D-Gras** mit Höhe ist **erledigt** — instanzierte Halme über
+dem Gitter, die der Roboter mäht, platt drückt und die nachwachsen (`grass.ts`).
 
 **Später geplant** (notiert, damit wir es nicht vergessen — aber jetzt noch nicht):
 
-- Echtes **3D-Gras** mit Höhe (Gras-Büschel statt nur Farbe)
 - **Krumme Rasenformen** und ein frei **verlegbarer Draht**, den man selbst mit
   **Nägeln** steckt. Das Nagel-Polylinien-Primitiv (gemeinsame Form von
   Begrenzungs- und Leitdraht) ist der erste Schritt dahin — noch sind beide

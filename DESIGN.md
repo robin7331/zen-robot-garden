@@ -102,16 +102,17 @@ Der **orange Roboter** ist der einzige knallige Akzent — der Blick bleibt bei 
 ### Gras (Mäh-Stufen)
 
 Die Grashöhe wird auf eine **5-stufige Grün-Rampe** gekoppelt: langes Gras ist
-satt und dunkel, frisch gemähtes Gras hell. Die Farbe ist nur ein *dezentes*
-Zusatz-Signal — die Hauptaussage ist die **Höhe** (siehe "Der Rasen").
+satt und dunkel, frisch gemähtes Gras ein helleres Grün (bewusst **nicht** gelb).
+Der Kontrast zwischen gemäht und ungemäht gibt den Mäh-Spiel-Look, bleibt aber
+ganz im Grün-Bereich (siehe "Der Rasen").
 
 | Token | Farbe | Stufe |
 |---|---|---|
-| `grass-1` | `#4a7a32` | lang (10 cm) — satt, dunkel |
-| `grass-2` | `#618f3d` | |
-| `grass-3` | `#78a448` | mittel |
-| `grass-4` | `#8fba53` | |
-| `grass-5` | `#a6cf5e` | frisch gemäht (3 cm) — hell |
+| `grass-1` | `#3f7a26` | lang (10 cm) — satt, dunkel |
+| `grass-2` | `#4f872d` | |
+| `grass-3` | `#5f9534` | mittel |
+| `grass-4` | `#699e38` | |
+| `grass-5` | `#73a93c` | frisch gemäht (~2,6 cm) — helleres Grün |
 
 ### Welt & Objekte
 
@@ -137,8 +138,8 @@ Echte Einheiten (cm / m). Startwerte — im Code feinjustierbar.
 | Rasen | **8 m × 6 m** | leicht rechteckig, flach |
 | Roboter | **60 cm lang · 45 cm breit · 25 cm hoch** | echter Mähroboter-Maßstab |
 | Antriebsräder | **Ø 20 cm** | zwei Stück, seitlich |
-| Gras lang | **10 cm** | ungemäht |
-| Gras gemäht | **3 cm** | frisch gemäht (Stummel) |
+| Gras lang | **10 cm** | ungemäht — dichter Teppich |
+| Gras gemäht | **~2,6 cm** | frisch gemäht (Stummel) |
 | Mäh-Gitter (Zelle) | **10 cm × 10 cm** | intern; ein Gras-Büschel pro Zelle |
 | Haus | **3 m × 3 m Grundfläche · 3,5 m First-Höhe** | |
 | Baum | **5 m hoch · Krone Ø ~3,5 m** | |
@@ -147,8 +148,9 @@ Echte Einheiten (cm / m). Startwerte — im Code feinjustierbar.
 | Slab: Fels-Schicht | **70 cm** | darunter, franst zackig aus |
 
 **Logik:** Langes Gras (10 cm) reicht dem 25-cm-Roboter bis ~40 % seiner Höhe —
-gut sichtbar, klar überfahrbar. Der 8-m-Rasen fasst gut 13 Roboter-Längen → genug
-Platz zum Fahren und Mähen.
+gut sichtbar, klar überfahrbar, und wird auf ~2,6 cm heruntergemäht. Der scharfe
+Höhen-Absatz dazwischen ist das Hauptsignal der Mähspur. Der 8-m-Rasen fasst gut
+13 Roboter-Längen → genug Platz zum Fahren und Mähen.
 
 ## Der Slab (die Diorama-Box)
 
@@ -167,15 +169,40 @@ Platz zum Fahren und Mähen.
   vielen einzelnen **Gras-Büscheln**.
 - Ein **Büschel** = ein Tuft aus 3–5 schmalen Low-Poly-Klingen. Pro interner
   Gitter-Zelle (10 × 10 cm) steht ein Büschel. Viele Büschel = dichter Rasen.
-- **Mähen:** Fährt der Roboter über ein Büschel, wird es **kurz** (10 cm → 3 cm
+- **Mähen:** Fährt der Roboter über ein Büschel, wird es **kurz** (10 cm → ~2,6 cm
   Stummel). Verfehlt er ein Büschel, bleibt es **lang stehen**. Die Mähspur ist
   also eine Schneise aus kurzem Gras zwischen langem — man sieht genau, wo der
   Roboter war (und wo nicht).
-- **Hauptsignal Höhe**, Farbe nur dezent mitgekoppelt: langes Gras nutzt die
-  dunkleren Stufen der Grün-Rampe, kurzes die helleren.
+- **Höhe UND Farbe als Signal:** langes Gras nutzt die dunkleren Stufen der
+  Grün-Rampe, kurzes die hellen Limettentöne — der Kontrast ist bewusst kräftig.
+- **Mäh-Streifen:** Über das gemähte Gras laufen helle/dunkle Bänder wie bei
+  einem frisch gemähten Rasen (weltachsen-parallel, im langen Gras gedämpft).
 - **Nachwachsen:** Ein gemähter Stummel wächst **flüssig** wieder hoch — der Büschel
   wird sichtbar Stück für Stück höher (keine Sprünge). Die Nachwachs-Geschwindigkeit
   ist einstellbar. So wird der Garten nie "fertig" — schön zen und endlos.
+
+### 3D-Grashalme (`BLADES`)
+
+Echtes 3D-Gras: viele kleine instanzierte Halme über dem Mäh-Gitter
+(`grass.ts`). Ein Shader liest Höhe und Plattdrücken je Halm direkt aus der
+Höhen-Textur des Gitters. Startwerte, im Code (`tokens.ts`) feinjustierbar.
+
+| Token | Wert | Was |
+|---|---|---|
+| `density` | **6500 /m²** | Halme je m² (8×6 m → ~312000 Halme) — dichter Teppich |
+| `height` | **10 cm** | voll gewachsene Halm-Höhe (langes Gras) |
+| `baseWidth` | **2,4 cm** | Fußbreite des Halm-Dreiecks (breit → dichter Teppich) |
+| `stubMin` | **0,26** | frisch gemäht bleibt ein Stummel (≈ 2,6 cm), nie kahl |
+| `flattenRadius` | **0,25 m** | Radius der Plattdrück-Scheibe unter dem Roboter |
+| `flattenRecoverTime` | **1,5 s** | wie lang plattgedrücktes Gras zum Aufrichten braucht |
+| `windSpeed` | **1,2** | Tempo der Wind-Welle |
+| `windStrength` | **0,28** | Wind-Stärke — Anteil der Halm-Höhe, um den die Spitze wandert |
+| `stripeWidth` | **0,55 m** | Breite eines hellen bzw. dunklen Mäh-Streifens |
+| `stripeStrength` | **0,16** | wie kräftig die Mäh-Streifen aufhellen/abdunkeln |
+
+Wo der Roboter steht, klappen die Halme **platt** und richten sich danach
+langsam wieder auf. Die Halme werfen/empfangen **keine Schatten** — die
+Farb-Ebene darunter trägt sie. Sie scheint zwischen den Halmen durch.
 
 ## Der Roboter
 

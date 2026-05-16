@@ -14,12 +14,13 @@ export const COLORS = {
   sun: '#fff4e0', // Sonnenlicht, leicht warm
   ambient: '#b9c8dd', // Füll-Licht, Himmel-Blau-Tönung
 
-  // Welt — Rasen-Farbstufen: hell = frisch gemäht, dunkel = voll nachgewachsen.
+  // Welt — Rasen-Farbstufen: hell-limettengrün = frisch gemäht, satt-dunkel =
+  // voll nachgewachsen. Kräftiger Kontrast für den Mäh-Spiel-Look.
   // Diese vier Töne sind zugleich die Anzeige-Stufen des Mäh-Gitters (mowGrid).
-  grassMown: '#a8c66c', // Stufe 0 — frisch gemäht (hellster Ton)
-  grassShort: '#8aab57', // Stufe 1 — kurz, wächst nach
-  grassMid: '#739848', // Stufe 2 — mittel
-  grass: '#618f3d', // Stufe 3 — voll nachgewachsen (dunkelster Ton)
+  grassMown: '#73a93c', // Stufe 0 — frisch gemäht (helleres Grün, nicht gelb)
+  grassShort: '#5f9534', // Stufe 1 — kurz, wächst nach
+  grassMid: '#4f872d', // Stufe 2 — mittel
+  grass: '#3f7a26', // Stufe 3 — voll nachgewachsen (satt-dunkelgrün)
   soil: '#6b4a2f', // Erd-Band unter dem Rasen
   rock: '#5f5953', // Fels-Schicht darunter
   twig: '#5a4327', // Ästchen — trockenes, holziges Braun
@@ -104,13 +105,41 @@ export const BATTERY = {
  */
 export const GRASS = {
   cellSize: 0.1, // m — Kantenlänge eines Gitter-Felds (8x6 m -> 80x60 Felder)
-  regrowTime: 600, // s — mittlere Zeit von frisch gemäht (0) bis voll (1)
+  regrowTime: 300, // s — mittlere Zeit von frisch gemäht (0) bis voll (1)
   // Streuung des Nachwachs-Tempos: jedes Feld bekommt beim Mähen ein eigenes,
   // zufälliges Tempo. 0.6 -> ein Feld wächst zwischen 0.4x und 1.6x so schnell
   // wie der Schnitt. So füllt sich die Mähspur ungleichmäßig und natürlich auf
   // statt überall exakt gleichzeitig. 0 = wieder überall gleich schnell.
   regrowVariation: 0.6,
   cutRadius: 0.2, // m — Radius der Mäh-Scheibe um den Roboter-Mittelpunkt
+} as const;
+
+/**
+ * Echte 3D-Grashalme — viele kleine instanzierte Halme über dem Mäh-Gitter.
+ * Höhe, Biegung und Plattdrücken liest der Shader direkt aus dem Gitter.
+ * Siehe grass.ts. Alle Werte einstellbar.
+ */
+export const BLADES = {
+  // Halme je m². Dichter Rasen — der Flaschenhals ist nicht die Dreiecks-
+  // zahl (die GPU schluckt Millionen mühelos), sondern Fragment-Overdraw;
+  // weil der Gras-Shader winzig ist, bleibt selbst dichtes Gras billig.
+  density: 6500, // 8x6 m -> ~312000 Halme — dichter Teppich-Look
+
+  height: 0.1, // m — voll gewachsene Halm-Höhe (langes Gras)
+  baseWidth: 0.024, // m — Fußbreite des Halm-Dreiecks (breit -> dichter Teppich)
+  // Frisch gemäht bleibt ein Stummel: 0.26 -> Halm nie kürzer als 26 % seiner
+  // Höhe (≈ 2,6 cm), nie kahl. Der große Abstand zu 100 % gibt den scharfen
+  // Höhen-Absatz zwischen gemäht und ungemäht (wie eine echte Mäh-Kante).
+  stubMin: 0.26,
+  flattenRadius: 0.25, // m — Radius der Plattdrück-Scheibe unter dem Roboter
+  flattenRecoverTime: 1.5, // s — wie lang plattgedrücktes Gras zum Aufrichten braucht
+  windSpeed: 1.2, // wie schnell die Wind-Welle läuft
+  windStrength: 0.28, // Wind-Stärke — Anteil der Halm-Höhe, um den die Spitze wandert
+
+  // Mäh-Streifen: helle/dunkle Bänder im gemähten Gras — der typische
+  // "frisch gemähter Rasen"-Look. Weltachsen-parallele Sinus-Bänder.
+  stripeWidth: 0.55, // m — Breite eines hellen bzw. dunklen Streifens
+  stripeStrength: 0.16, // wie kräftig die Streifen aufhellen/abdunkeln
 } as const;
 
 /**
