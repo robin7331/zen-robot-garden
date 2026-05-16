@@ -146,12 +146,15 @@ export const GRASS = {
   // wie der Schnitt. So füllt sich die Mähspur ungleichmäßig und natürlich auf
   // statt überall exakt gleichzeitig. 0 = wieder überall gleich schnell.
   regrowVariation: 0.6,
-  cutRadius: 0.2, // m — Radius der voll gemähten Scheibe um den Roboter-Mittelpunkt
+  // Radius der voll gemähten Scheibe. Wie bei einem echten Mähroboter mäht nur
+  // ein kleiner Klingen-Teller unter der Mitte — deutlich schmaler als der
+  // Körper (robotWidth 0.45 m), nicht der ganze Körper-Abdruck.
+  cutRadius: 0.13, // m — voll gemäht (Spur-Kern ~0,26 m breit)
   // Weicher Schnitt-Rand: außerhalb von cutRadius läuft der Schnitt über diese
   // Breite stufenlos aus (gemäht -> ungemäht). Ein harter Schnitt ergäbe an
   // schrägen Mähspuren einen Treppen-Effekt (Raster-Aliasing); der weiche Rand
   // gibt den Kanten-Feldern Zwischenwerte und glättet so die Spur-Kante.
-  cutFalloff: 0.14, // m — Breite des auslaufenden Schnitt-Rands
+  cutFalloff: 0.09, // m — Breite des auslaufenden Schnitt-Rands
 } as const;
 
 /**
