@@ -29,6 +29,28 @@ function glslFloat(n: number): string {
   return n.toFixed(5);
 }
 
+/** Achsenparalleles Welt-Rechteck (XZ) — eine Fläche ohne Gras. */
+export type GrassExclusion = {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+};
+
+/** Liegt der Punkt (x, z) in einer der Sperrflächen? */
+function isExcluded(
+  x: number,
+  z: number,
+  exclusions: ReadonlyArray<GrassExclusion>,
+): boolean {
+  for (const r of exclusions) {
+    if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Baut die Halm-Geometrie: ein sich nach oben verjüngendes Dreieck mit 3
  * senkrechten Segmenten (4 Höhen-Ebenen, 7 Vertices, 5 Dreiecke) — die
@@ -37,8 +59,13 @@ function glslFloat(n: number): string {
  * Im `position`-Attribut steht x = Breite (m), y = Höhen-Anteil 0..1 entlang
  * des Halms (NICHT Meter — der Shader skaliert ihn je Halm). Dazu die drei
  * Instanz-Attribute aOffset / aRotation / aRandom.
+ *
+ * `exclusions` sind Welt-Rechtecke ohne Gras (z.B. unter der Ladestation):
+ * Halme, die dort landen würden, werden neu gewürfelt.
  */
-function makeBladeGeometry(): THREE.InstancedBufferGeometry {
+function makeBladeGeometry(
+  exclusions: ReadonlyArray<GrassExclusion>,
+): THREE.InstancedBufferGeometry {
   const halfBase = BLADES.baseWidth / 2;
   const fr = [0, 1 / 3, 2 / 3, 1]; // Höhen-Anteile der vier Ebenen
   // Halbe Breite je Ebene: unten voll, läuft nach oben auf 0 (Spitze) zu.
@@ -67,8 +94,15 @@ function makeBladeGeometry(): THREE.InstancedBufferGeometry {
   const randoms = new Float32Array(BLADE_COUNT * 3); // Wind-Phase, Höhe, Farbton
   for (let i = 0; i < BLADE_COUNT; i++) {
     // Gleichmäßig zufällig über das volle Rasen-Rechteck (keine Büschel).
-    offsets[i * 2] = (Math.random() - 0.5) * SIZES.lawnWidth;
-    offsets[i * 2 + 1] = (Math.random() - 0.5) * SIZES.lawnDepth;
+    // Fällt ein Halm in eine Sperrfläche, wird seine Position neu gewürfelt.
+    let x: number;
+    let z: number;
+    do {
+      x = (Math.random() - 0.5) * SIZES.lawnWidth;
+      z = (Math.random() - 0.5) * SIZES.lawnDepth;
+    } while (isExcluded(x, z, exclusions));
+    offsets[i * 2] = x;
+    offsets[i * 2 + 1] = z;
     rotations[i] = Math.random() * Math.PI * 2;
     randoms[i * 3] = Math.random(); // Wind-Phase
     randoms[i * 3 + 1] = Math.random(); // Höhen-Zufall je Halm
@@ -214,7 +248,7 @@ export class GrassField {
 
   private readonly material: THREE.ShaderMaterial;
 
-  constructor(grid: MowGrid) {
+  constructor(grid: MowGrid, exclusions: ReadonlyArray<GrassExclusion> = []) {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uHeightTex: { value: grid.heightTexture },
@@ -230,7 +264,7 @@ export class GrassField {
       side: THREE.DoubleSide,
     });
 
-    this.mesh = new THREE.Mesh(makeBladeGeometry(), this.material);
+    this.mesh = new THREE.Mesh(makeBladeGeometry(exclusions), this.material);
     this.mesh.name = 'grassField';
     // Der Shader verschiebt Vertices — die Bounding-Sphere wäre falsch. Im
     // Diorama ist der Rasen ohnehin immer im Bild, also Culling abschalten.

@@ -152,12 +152,16 @@ export const BLADES = {
  *   nail[0] = Dock — in der Ladestation an der +X-Kante. Muss mit dem in
  *             main.ts aus der Stations-Pose berechneten Andock-Punkt
  *             übereinstimmen (Station bei x≈3,6 -> Dock x≈3,54).
- *   nail[1] = ein sanfter Knick quer durch den Garten (obtus, kein Eck-Pivot).
- *   nail[2] = fernes Ende — eine echte Y-Verzweigung auf den Begrenzungsdraht
+ *   nail[1] = Gerade Anfahrt — gleiches z wie das Dock. Das letzte Draht-
+ *             Stück läuft so schnurgerade entlang +X in die Station; der
+ *             Roboter richtet sich darauf aus und fährt gerade hinein.
+ *   nail[2] = ein sanfter Knick quer durch den Garten (obtus, kein Eck-Pivot).
+ *   nail[3] = fernes Ende — eine echte Y-Verzweigung auf den Begrenzungsdraht
  *             an der -X-Kante (x = -(lawnWidth/2 - wireInset) = -3,6).
  */
 export const LEITDRAHT_NAILS = [
   { x: 3.54, z: -1.6 },
+  { x: 2.0, z: -1.6 },
   { x: 0.4, z: 0.3 },
   { x: -3.6, z: 1.0 },
 ] as const;

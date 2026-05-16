@@ -1,84 +1,93 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { COLORS } from '../tokens';
+// Vite liefert mit `?url` die fertige Adresse der GLB-Datei zurück.
+import stationModelUrl from './husqvarna-ladestation.glb?url';
 
 /**
- * Die Ladestation — der "Bahnhof" des Mähroboters. Aus einfachen Quadern
- * zusammengebaut wie der Rest des Dioramas.
+ * Die Ladestation — der "Bahnhof" des Mähroboters. Jetzt ein fertiges
+ * 3D-Modell (Husqvarna-Ladestation) statt der früheren Bauklotz-Form aus
+ * Quadern.
  *
- * Aufbau: eine flache Bodenplatte, auf die der Roboter fährt, und eine
- * niedrige Rückwand mit einer dunklen Kontakt-Leiste. Oben sitzt eine kleine
- * Leuchte ('led'), die anzeigt, ob gerade geladen wird.
+ * Die GLB-Datei wird beim Start geladen, ausgerichtet, auf den
+ * Diorama-Maßstab skaliert und mit der Unterseite auf den Boden gesetzt.
  *
- * Achsen-Konvention (lokal): Die Öffnung zeigt nach +Z — von dort fährt der
- * Roboter herein. Die Rückwand steht bei -Z. Der Ursprung liegt am Boden.
+ * Achsen-Konvention (lokal, wie der Rest des Spiels):
+ *   +Z = vorne (die Öffnung — von dort fährt der Roboter herein)
+ *   -Z = hinten (Rückwand)
+ *   Der Gruppen-Ursprung liegt am Boden (y = 0), mittig.
+ *
+ * Benannte Teile für die Steuerung:
+ *   'led' — kleine Leuchte oben: leuchtet beim Laden. Das GLB-Modell bringt
+ *           keine eigene LED mit, darum bleibt sie eine kleine Grundform.
+ *           Die Leucht-Stärke setzt main.ts pro Bild.
  */
 
 // — Maße (Meter) ———————————————————————————————————————————————————
 export const STATION = {
-  plateWidth: 0.56, // Bodenplatte — Breite (X)
-  plateLength: 0.66, // Bodenplatte — Länge (Z)
-  plateHeight: 0.04, // Bodenplatte — Dicke
-  backWallHeight: 0.24, // Rückwand — Höhe
-  backWallThickness: 0.09, // Rückwand — Dicke (Z)
-  /** Roboter-Mitte (lokal Z), wenn er angedockt steht — kurz vor der Rückwand. */
+  /** Ziel-Tiefe (Z) des Modells — darauf wird die GLB-Datei skaliert. */
+  targetDepth: 0.8,
+  /** Roboter-Mitte (lokal Z), wenn er angedockt steht — kurz vor der Mitte. */
   dockLocalZ: 0.06,
 } as const;
 
-/** Flach schattiertes, mattes Material — der Origami-Look des Dioramas. */
-function flatMat(color: string): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color),
-    flatShading: true,
-    roughness: 0.9,
-    metalness: 0,
-  });
-}
+// — Ausrichtung —————————————————————————————————————————————————
+// Falls die Öffnung in die falsche Richtung zeigt (der Roboter würde
+// rückwärts gegen die Rückwand docken), diesen Wert auf Math.PI setzen —
+// dann dreht sich das Modell um 180°.
+const MODEL_YAW_OFFSET = 0;
 
-const caseMat = flatMat(COLORS.station);
-const darkMat = flatMat(COLORS.robotDark);
-
-/** Baut die Ladestation und gibt sie als Gruppe zurück. */
-export function createChargingStationMesh(): THREE.Group {
+/**
+ * Lädt das GLB-Modell und gibt die fertig ausgerichtete Ladestation als
+ * Gruppe zurück. Asynchron, weil die Datei erst geladen werden muss:
+ *   const station = await createChargingStationMesh();
+ *   scene.add(station);
+ */
+export async function createChargingStationMesh(): Promise<THREE.Group> {
   const station = new THREE.Group();
   station.name = 'chargingStation';
 
-  // Bodenplatte — flach, der Roboter fährt darüber.
-  const plate = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      STATION.plateWidth,
-      STATION.plateHeight,
-      STATION.plateLength,
-    ),
-    caseMat,
-  );
-  plate.position.y = STATION.plateHeight / 2;
+  const gltf = await new GLTFLoader().loadAsync(stationModelUrl);
+  const model = gltf.scene;
 
-  // Rückwand am -Z-Ende.
-  const backWallZ =
-    -STATION.plateLength / 2 + STATION.backWallThickness / 2;
-  const backWall = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      STATION.plateWidth,
-      STATION.backWallHeight,
-      STATION.backWallThickness,
-    ),
-    caseMat,
-  );
-  backWall.position.set(0, STATION.backWallHeight / 2, backWallZ);
+  // — 1. Ausrichten: die längere Boden-Achse soll die Tiefe (Z) sein.
+  //   Liegt das Modell quer (X länger als Z), drehen wir es um 90°. —
+  let box = new THREE.Box3().setFromObject(model);
+  let size = box.getSize(new THREE.Vector3());
+  if (size.x > size.z) {
+    model.rotation.y = Math.PI / 2;
+  }
+  model.rotation.y += MODEL_YAW_OFFSET;
+  model.updateMatrixWorld(true);
 
-  // Dunkle Kontakt-Leiste vorn an der Rückwand.
-  const contact = new THREE.Mesh(
-    new THREE.BoxGeometry(STATION.plateWidth * 0.5, 0.07, 0.04),
-    darkMat,
-  );
-  contact.position.set(
-    0,
-    STATION.backWallHeight * 0.5,
-    backWallZ + STATION.backWallThickness / 2,
-  );
+  // — 2. Gleichmäßig skalieren: die Tiefe (Z) auf den Token-Maßstab bringen.
+  //   Gleichmäßig, damit die Proportionen des Modells erhalten bleiben. —
+  box = new THREE.Box3().setFromObject(model);
+  size = box.getSize(new THREE.Vector3());
+  model.scale.setScalar(STATION.targetDepth / size.z);
+  model.updateMatrixWorld(true);
 
-  // Lade-Leuchte oben auf der Rückwand. Sie leuchtet beim Laden — die Stärke
-  // (emissiveIntensity) wird in main.ts pro Bild gesetzt.
+  // — 3. Auf den Boden setzen (Unterseite auf y = 0) und horizontal zentrieren.
+  box = new THREE.Box3().setFromObject(model);
+  const center = box.getCenter(new THREE.Vector3());
+  const modelTop = box.max.y - box.min.y; // Höhe über dem Boden nach dem Setzen
+  model.position.x -= center.x;
+  model.position.z -= center.z;
+  model.position.y -= box.min.y;
+
+  // Jedes Mesh wirft und empfängt Schatten.
+  model.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+
+  station.add(model);
+
+  // — Lade-Leuchte oben hinten auf der Station: leuchtet beim Laden, sonst
+  //   aus. Das GLB-Modell hat keine eigene LED, darum bleibt sie eine kleine
+  //   Grundform. Die Leucht-Stärke (emissiveIntensity) setzt main.ts pro Bild. —
   const ledMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(COLORS.chargeLed),
     emissive: new THREE.Color(COLORS.chargeLed),
@@ -86,17 +95,12 @@ export function createChargingStationMesh(): THREE.Group {
     flatShading: true,
     roughness: 0.6,
   });
-  const led = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.05), ledMat);
+  const led = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.04), ledMat);
   led.name = 'led';
-  led.position.set(0, STATION.backWallHeight + 0.02, backWallZ);
+  // Knapp über dem Modell, nach hinten (-Z) versetzt.
+  led.position.set(0, modelTop + 0.02, -STATION.targetDepth * 0.3);
+  led.castShadow = true;
+  station.add(led);
 
-  station.add(plate, backWall, contact, led);
-
-  station.traverse((obj) => {
-    if (obj instanceof THREE.Mesh) {
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-    }
-  });
   return station;
 }

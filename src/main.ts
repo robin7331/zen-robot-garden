@@ -47,11 +47,6 @@ async function main(): Promise<void> {
   const mowGrid = new MowGrid();
   scene.add(mowGrid.mesh);
 
-  // Echte 3D-Grashalme über dem Gitter: der Shader liest Höhe und Plattdrücken
-  // direkt aus mowGrid.heightTexture. Die Farb-Ebene scheint dazwischen durch.
-  const grassField = new GrassField(mowGrid);
-  scene.add(grassField.mesh);
-
   // Physik-Welt + Boden. Die Rasen-Grenze ist der Begrenzungsdraht (wire.ts),
   // keine Wand — der Roboter spürt ihn mit seinen Spulen-Sensoren.
   const world = createWorld();
@@ -60,10 +55,32 @@ async function main(): Promise<void> {
   // Ladestation an der rechten Rasenkante, Öffnung zum Rasen hin.
   const stationPos = new THREE.Vector3(3.6, 0, -1.6);
   const stationYaw = -Math.PI / 2;
-  const station = createChargingStationMesh();
+  const station = await createChargingStationMesh();
   station.position.copy(stationPos);
   station.rotation.y = stationYaw;
   scene.add(station);
+
+  // Grundfläche der Station (Welt-Rechteck XZ) — darunter wächst kein Gras.
+  const stationBox = new THREE.Box3().setFromObject(station);
+  const stationArea = {
+    minX: stationBox.min.x,
+    maxX: stationBox.max.x,
+    minZ: stationBox.min.z,
+    maxZ: stationBox.max.z,
+  };
+  // Mäh-Gitter dort sperren (keine Farb-Fläche, kein Nachwachsen).
+  mowGrid.clearArea(
+    stationArea.minX,
+    stationArea.minZ,
+    stationArea.maxX,
+    stationArea.maxZ,
+  );
+
+  // Echte 3D-Grashalme über dem Gitter: der Shader liest Höhe und Plattdrücken
+  // direkt aus mowGrid.heightTexture. Die Farb-Ebene scheint dazwischen durch.
+  // Unter der Ladestation bleibt die Fläche frei von Halmen.
+  const grassField = new GrassField(mowGrid, [stationArea]);
+  scene.add(grassField.mesh);
 
   // Andock-Punkt (Weltkoordinaten): kurz vor der Rückwand der Station.
   const dock = new THREE.Vector3(0, 0, STATION.dockLocalZ)

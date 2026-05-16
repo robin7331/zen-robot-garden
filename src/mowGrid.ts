@@ -162,6 +162,27 @@ export class MowGrid {
     }
   }
 
+  /**
+   * Sperrt alle Felder in einem achsenparallelen Welt-Rechteck (XZ): dort
+   * wächst kein Gras mehr — die Höhe wird auf 0 gesetzt und das Nachwachs-
+   * Tempo auf 0. Für dauerhaft verdeckte Flächen wie unter der Ladestation.
+   * Einmal beim Aufbau aufrufen.
+   */
+  clearArea(minX: number, minZ: number, maxX: number, maxZ: number): void {
+    const a = Math.max(0, this.cellX(minX));
+    const b = Math.min(CELLS_X - 1, this.cellX(maxX));
+    const c = Math.max(0, this.cellZ(minZ));
+    const d = Math.min(CELLS_Z - 1, this.cellZ(maxZ));
+    for (let cz = c; cz <= d; cz++) {
+      for (let cx = a; cx <= b; cx++) {
+        const i = cx + cz * CELLS_X;
+        this.heights[i] = 0; // gemäht-kurz
+        this.cellRate[i] = 0; // wächst nicht mehr nach
+      }
+    }
+    this.redraw();
+  }
+
   /** Die Höhen-Textur (R = Grashöhe, G = flatten) für den Gras-Shader. */
   get heightTexture(): THREE.Texture {
     return this.heightTex;
