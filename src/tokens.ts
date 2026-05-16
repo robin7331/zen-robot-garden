@@ -23,6 +23,10 @@ export const COLORS = {
   // Roboter
   robotBody: '#e8862f', // Körper — warmes Orange, der eine knallige Akzent
   robotDark: '#2a2a2c', // Räder, Klinge, Sensor, Details
+
+  // Ladestation
+  station: '#6f6a63', // Gehäuse — gedecktes Grau
+  chargeLed: '#7dffb4', // Lade-Leuchte — sanftes Grün
 } as const;
 
 /** Maße in Metern (echte Einheiten, siehe DESIGN.md). */
@@ -54,4 +58,16 @@ export const DRIVE = {
   backupTime: 0.8, // s — wie lang nach dem Anstoßen zurückgesetzt wird
   turnTimeMin: 0.5, // s — kürzeste Drehung danach
   turnTimeMax: 1.5, // s — längste Drehung danach
+} as const;
+
+/**
+ * Akku-Werte des Roboters — einstellbar. Zahlen sind Anteile pro Sekunde
+ * (1 = voller Akku, 0 = leer). Aktuell eher zügig, damit man den Lade-
+ * Kreislauf gut sieht; für ruhigeres Zen-Tempo die Werte kleiner machen.
+ */
+export const BATTERY = {
+  drain: 0.022, // pro Sekunde beim Fahren — voll -> niedrig in ~34 s
+  charge: 0.08, // pro Sekunde an der Station — fast leer -> voll in ~12 s
+  low: 0.25, // ab hier fährt der Roboter zur Ladestation heim
+  full: 0.99, // ab hier verlässt er die Station wieder
 } as const;

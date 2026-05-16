@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as RAPIER from '@dimforge/rapier3d-compat';
-import { SIZES, DRIVE } from './tokens';
+import { SIZES, DRIVE, BATTERY } from './tokens';
 import { GROUP, collisionGroups } from './physics';
 
 /**
@@ -51,8 +51,19 @@ const FORCE_MAX = 30; // N — eine Reibungskraft kann nicht beliebig groß werd
 
 const BLADE_SPIN = 6; // rad/s — Drehzahl der Mähklinge beim Fahren
 
-/** Was der Roboter gerade tut. */
-type State = 'driving' | 'backing' | 'turning';
+// — Heimfahren zur Ladestation ————————————————————————————————————
+const STEER_GAIN = 1.6; // wie kräftig der Roboter zum Ziel einlenkt
+const DOCK_RADIUS = 0.18; // ab dieser Nähe zur Station gilt er als angedockt
+
+/**
+ * Was der Roboter gerade tut.
+ *   driving  — geradeaus mähen
+ *   seeking  — Akku niedrig, fährt zur Ladestation heim
+ *   charging — steht angedockt und lädt
+ *   backing  — nach Stoß (oder vom Laden) ein Stück zurücksetzen
+ *   turning  — danach in eine zufällige Richtung wegdrehen
+ */
+type State = 'driving' | 'seeking' | 'charging' | 'backing' | 'turning';
 
 /** Erzeugt eine Quaternion für eine reine Drehung um die Hochachse (Y). */
 function yawQuat(yaw: number): RAPIER.Rotation {
@@ -94,6 +105,11 @@ export class RobotController {
   // Wird von außen gesetzt, wenn Rapier eine Kollision meldet (Stoßsensor).
   private bumped = false;
 
+  // Akku-Stand 0..1 und der Andock-Punkt der Ladestation (Weltkoordinaten).
+  private battery = 1;
+  private readonly dockX: number;
+  private readonly dockZ: number;
+
   // Wiederverwendete Hilfsobjekte — kein Müll pro Frame.
   private readonly _quat = new THREE.Quaternion();
   private readonly _fwd = new THREE.Vector3();
@@ -103,8 +119,11 @@ export class RobotController {
     world: RAPIER.World,
     view: THREE.Group,
     start: { x: number; z: number; yaw: number },
+    dock: { x: number; z: number },
   ) {
     this.view = view;
+    this.dockX = dock.x;
+    this.dockZ = dock.z;
     this.wheelLeftMesh = view.getObjectByName('wheelLeft') ?? null;
     this.wheelRightMesh = view.getObjectByName('wheelRight') ?? null;
     this.bladeMesh = view.getObjectByName('blade') ?? null;
@@ -148,19 +167,29 @@ export class RobotController {
     this.bumped = true;
   }
 
+  /** Akku-Stand 0..1. */
+  get batteryLevel(): number {
+    return this.battery;
+  }
+
+  /** Lädt der Roboter gerade an der Station? */
+  get isCharging(): boolean {
+    return this.state === 'charging';
+  }
+
   /**
    * Ein fester Physik-Schritt: Autonomie denken, Motoren regeln, Reibungs-
    * kräfte an den Rädern aufbringen. Direkt vor `world.step()` aufrufen.
    */
   fixedUpdate(dt: number): void {
-    this.think(dt);
-    this.rampMotors(dt);
-
-    // Aktuelle Blickrichtung des Roboters bestimmen.
+    // Blickrichtung zuerst — die Autonomie (Heimfahren) braucht sie.
     const rot = this.body.rotation();
     this._quat.set(rot.x, rot.y, rot.z, rot.w);
     this._fwd.set(0, 0, 1).applyQuaternion(this._quat); // vorne
     this._right.set(1, 0, 0).applyQuaternion(this._quat); // rechts
+
+    this.think(dt);
+    this.rampMotors(dt);
 
     // Reibungskraft je Rad — daraus entsteht die ganze Bewegung.
     this.applyWheelFriction(-TRACK_HALF, this.speedLeft, dt);
@@ -194,14 +223,29 @@ export class RobotController {
     }
   }
 
-  // — Autonomie ("geradeaus, bis es stößt") ——————————————————————————
+  // — Autonomie: mähen, bei leerem Akku heimfahren und laden ——————————
   private think(dt: number): void {
-    // Ein Stoß zählt nur, während der Roboter geradeaus fährt.
-    if (this.state === 'driving' && this.bumped) {
+    // Akku: leert sich beim Fahren, lädt nur an der Station.
+    if (this.state === 'charging') {
+      this.battery = Math.min(1, this.battery + BATTERY.charge * dt);
+    } else {
+      this.battery = Math.max(0, this.battery - BATTERY.drain * dt);
+    }
+
+    // Ein Stoß wirkt beim Mähen und beim Heimfahren.
+    if (
+      (this.state === 'driving' || this.state === 'seeking') &&
+      this.bumped
+    ) {
       this.state = 'backing';
       this.stateTimer = DRIVE.backupTime;
     }
     this.bumped = false;
+
+    // Akku niedrig -> heimfahren.
+    if (this.state === 'driving' && this.battery <= BATTERY.low) {
+      this.state = 'seeking';
+    }
 
     this.stateTimer -= dt;
 
@@ -212,8 +256,24 @@ export class RobotController {
         this.targetRight = DRIVE.maxSpeed;
         break;
 
+      case 'seeking':
+        // Zur Ladestation lenken (dockt selbst an, wenn er da ist).
+        this.steerToDock();
+        break;
+
+      case 'charging':
+        // Stehen bleiben und laden.
+        this.targetLeft = 0;
+        this.targetRight = 0;
+        if (this.battery >= BATTERY.full) {
+          // Voll — rückwärts aus der Station heraus, dann weiterfahren.
+          this.state = 'backing';
+          this.stateTimer = DRIVE.backupTime;
+        }
+        break;
+
       case 'backing':
-        // Ein Stück zurücksetzen, weg vom Hindernis.
+        // Ein Stück zurücksetzen, weg vom Hindernis (oder aus der Station).
         this.targetLeft = -DRIVE.reverseSpeed;
         this.targetRight = -DRIVE.reverseSpeed;
         if (this.stateTimer <= 0) {
@@ -232,9 +292,42 @@ export class RobotController {
         // Räder gegenläufig -> Drehung auf der Stelle.
         this.targetLeft = DRIVE.turnSpeed * this.turnDir;
         this.targetRight = -DRIVE.turnSpeed * this.turnDir;
-        if (this.stateTimer <= 0) this.state = 'driving';
+        if (this.stateTimer <= 0) {
+          // Akku immer noch leer? Weiter heimfahren, sonst normal mähen.
+          this.state = this.battery <= BATTERY.low ? 'seeking' : 'driving';
+        }
         break;
     }
+  }
+
+  /**
+   * Lenkt den Roboter zur Ladestation. Liegt das Ziel vorne, fährt er darauf
+   * zu; liegt es seitlich oder hinten, dreht er sich erst hin. Ist er nah
+   * genug, gilt er als angedockt und wechselt ins Laden.
+   */
+  private steerToDock(): void {
+    const pos = this.body.translation();
+    const dx = this.dockX - pos.x;
+    const dz = this.dockZ - pos.z;
+
+    if (Math.hypot(dx, dz) < DOCK_RADIUS) {
+      this.state = 'charging';
+      this.targetLeft = 0;
+      this.targetRight = 0;
+      return;
+    }
+
+    // Winkel zwischen Blickrichtung und Richtung zum Ziel (-pi..pi).
+    const ahead = dx * this._fwd.x + dz * this._fwd.z;
+    const side = this._fwd.x * dz - this._fwd.z * dx;
+    const heading = Math.atan2(side, ahead);
+
+    // Vorwärts nur, soweit das Ziel auch vorne liegt; sonst zum Ziel drehen.
+    const forward = DRIVE.maxSpeed * Math.max(0, Math.cos(heading));
+    const turn =
+      THREE.MathUtils.clamp(heading * STEER_GAIN, -1, 1) * DRIVE.turnSpeed;
+    this.targetLeft = forward - turn;
+    this.targetRight = forward + turn;
   }
 
   /** Rad-Motoren nähern sich ihrem Wunsch-Tempo an — das gibt die Trägheit. */

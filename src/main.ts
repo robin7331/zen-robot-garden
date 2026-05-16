@@ -17,6 +17,10 @@ import {
 } from './physics';
 import { RobotController } from './robotController';
 import { TwigField } from './twigs';
+import {
+  createChargingStationMesh,
+  STATION,
+} from './models/chargingStation';
 import { SIZES } from './tokens';
 
 /**
@@ -42,14 +46,32 @@ async function main(): Promise<void> {
   addGround(world);
   const wallHandles = new Set(addBoundaryWalls(world));
 
+  // Ladestation an der rechten Rasenkante, Öffnung zum Rasen hin.
+  const stationPos = new THREE.Vector3(3.6, 0, -1.6);
+  const stationYaw = -Math.PI / 2;
+  const station = createChargingStationMesh();
+  station.position.copy(stationPos);
+  station.rotation.y = stationYaw;
+  scene.add(station);
+
+  // Andock-Punkt (Weltkoordinaten): kurz vor der Rückwand der Station.
+  const dock = new THREE.Vector3(0, 0, STATION.dockLocalZ)
+    .applyAxisAngle(new THREE.Vector3(0, 1, 0), stationYaw)
+    .add(stationPos);
+
+  // Lade-Leuchte der Station — wird pro Bild auf/aus geschaltet.
+  const ledMat = (station.getObjectByName('led') as THREE.Mesh)
+    .material as THREE.MeshStandardMaterial;
+
   // Roboter: Sicht-Modell in die Szene, Steuerung an die Physik koppeln.
   const robot = createRobot();
   scene.add(robot);
-  const controller = new RobotController(world, robot, {
-    x: -0.8,
-    z: 0.6,
-    yaw: -0.6,
-  });
+  const controller = new RobotController(
+    world,
+    robot,
+    { x: -0.8, z: 0.6, yaw: -0.6 },
+    { x: dock.x, z: dock.z },
+  );
   const robotHandle = controller.colliderHandle;
 
   // Ästchen-Verwaltung.
@@ -131,6 +153,11 @@ async function main(): Promise<void> {
 
     controller.sync(frameDt); // Physik-Pose ins Sicht-Modell übernehmen
     twigField.sync(); // Ästchen mitbewegen
+
+    // Lade-Leuchte: pulsiert sanft, solange der Roboter andockt und lädt.
+    ledMat.emissiveIntensity = controller.isCharging
+      ? 0.9 + 0.5 * Math.sin(now * 0.006)
+      : 0;
     updateControls(controls, camera); // Damping + Rubber Banding
     renderer.render(scene, camera);
   }
