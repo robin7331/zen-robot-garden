@@ -18,6 +18,11 @@ export const COLORS = {
   grass: '#618f3d', // Rasen-Oberseite (langes Gras, dunklere Stufe)
   soil: '#6b4a2f', // Erd-Band unter dem Rasen
   rock: '#5f5953', // Fels-Schicht darunter
+  twig: '#5a4327', // Ästchen — trockenes, holziges Braun
+
+  // Roboter
+  robotBody: '#e8862f', // Körper — warmes Orange, der eine knallige Akzent
+  robotDark: '#2a2a2c', // Räder, Klinge, Sensor, Details
 } as const;
 
 /** Maße in Metern (echte Einheiten, siehe DESIGN.md). */
@@ -28,4 +33,25 @@ export const SIZES = {
   grassLip: 0.1, // Überstand der Gras-Lippe je Seite
   soilThickness: 0.3, // Erd-Band
   rockThickness: 0.7, // Fels-Schicht
+
+  // Roboter (echter Mähroboter-Maßstab)
+  robotLength: 0.6, // Länge (Z, = Fahrtrichtung)
+  robotWidth: 0.45, // Breite (X)
+  robotHeight: 0.25, // Höhe (Y)
+  wheelDiameter: 0.2, // Antriebsräder Ø
+} as const;
+
+/**
+ * Fahr-Werte des Roboters — bewusst einstellbar (siehe CLAUDE.md).
+ * Wer dem Roboter ein anderes Fahrgefühl geben will, ändert es hier.
+ */
+export const DRIVE = {
+  maxSpeed: 0.55, // m/s — Vorwärts-Höchstgeschwindigkeit (ruhiges Zen-Tempo)
+  reverseSpeed: 0.3, // m/s — Tempo beim Zurücksetzen nach dem Anstoßen
+  turnSpeed: 0.45, // m/s — Rad-Tempo (gegenläufig) beim Drehen auf der Stelle
+  wheelAccel: 0.9, // m/s² — wie schnell die Rad-Motoren ihr Tempo ändern (Trägheit)
+
+  backupTime: 0.8, // s — wie lang nach dem Anstoßen zurückgesetzt wird
+  turnTimeMin: 0.5, // s — kürzeste Drehung danach
+  turnTimeMax: 1.5, // s — längste Drehung danach
 } as const;
