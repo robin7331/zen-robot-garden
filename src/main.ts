@@ -19,6 +19,7 @@ import {
   createChargingStationMesh,
   STATION,
 } from './models/chargingStation';
+import { computeStationFootprint } from './stationFootprint';
 import { SIZES } from './tokens';
 import { heightAt, normalAt, raycastTerrain } from './terrain';
 import { createBatteryUI, createFpsUI } from './ui';
@@ -73,26 +74,23 @@ async function main(): Promise<void> {
   }
   scene.add(station);
 
-  // Grundfläche der Station (Welt-Rechteck XZ) — darunter wächst kein Gras.
-  const stationBox = new THREE.Box3().setFromObject(station);
-  const stationArea = {
-    minX: stationBox.min.x,
-    maxX: stationBox.max.x,
-    minZ: stationBox.min.z,
-    maxZ: stationBox.max.z,
-  };
-  // Mäh-Gitter dort sperren (keine Farb-Fläche, kein Nachwachsen).
-  mowGrid.clearArea(
-    stationArea.minX,
-    stationArea.minZ,
-    stationArea.maxX,
-    stationArea.maxZ,
-  );
+  // Stations-Grundriss: eine pixelgenaue Maske der Fläche, die das Modell von
+  // oben verdeckt. Sie folgt der echten (gerundeten) Grundplatte — kein
+  // grober Kasten mehr, also wächst das Gras bis dicht an die Station heran.
+  // Mäh-Gitter exakt unter der Grundplatte sperren (keine Farb-Fläche, kein
+  // Nachwachsen).
+  const footprint = computeStationFootprint(station);
+  mowGrid.clearMask(footprint);
 
   // Echte 3D-Grashalme über dem Gitter: der Shader liest Höhe und Plattdrücken
   // direkt aus mowGrid.heightTexture. Die Farb-Ebene scheint dazwischen durch.
-  // Unter der Ladestation bleibt die Fläche frei von Halmen.
-  const grassField = new GrassField(mowGrid, [stationArea]);
+  // Die Halme werden etwas weiter ausgespart als die Platte breit ist
+  // (margin), damit kein Halm über den Plattenrand lappt — ein schmaler
+  // bewuchsfreier Saum legt sich um die Station.
+  const grassFootprint = computeStationFootprint(station, { margin: 0.03 });
+  const grassField = new GrassField(mowGrid, (x, z) =>
+    grassFootprint.covers(x, z),
+  );
   scene.add(grassField.mesh);
 
   // Andock-Punkt (Weltkoordinaten): kurz vor der Rückwand der Station, mit
