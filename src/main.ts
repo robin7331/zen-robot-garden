@@ -8,13 +8,9 @@ import {
   updateControls,
 } from './camera';
 import { createGarden } from './garden';
+import { createWireMesh } from './wire';
 import { createRobot } from './models/robot';
-import {
-  initPhysics,
-  createWorld,
-  addGround,
-  addBoundaryWalls,
-} from './physics';
+import { initPhysics, createWorld, addGround } from './physics';
 import { RobotController } from './robotController';
 import { TwigField } from './twigs';
 import {
@@ -22,6 +18,7 @@ import {
   STATION,
 } from './models/chargingStation';
 import { SIZES } from './tokens';
+import { createBatteryUI } from './ui';
 
 /**
  * Einstiegspunkt: setzt Szene, Kamera, Garten und Physik zusammen und startet
@@ -40,11 +37,12 @@ async function main(): Promise<void> {
   const controls = createControls(camera, renderer.domElement);
 
   scene.add(createGarden());
+  scene.add(createWireMesh()); // sichtbarer Begrenzungsdraht auf dem Rasen
 
-  // Physik-Welt + Boden + unsichtbare Wände an der Rasenkante.
+  // Physik-Welt + Boden. Die Rasen-Grenze ist der Begrenzungsdraht (wire.ts),
+  // keine Wand — der Roboter spürt ihn mit seinen Spulen-Sensoren.
   const world = createWorld();
   addGround(world);
-  const wallHandles = new Set(addBoundaryWalls(world));
 
   // Ladestation an der rechten Rasenkante, Öffnung zum Rasen hin.
   const stationPos = new THREE.Vector3(3.6, 0, -1.6);
@@ -77,32 +75,71 @@ async function main(): Promise<void> {
   // Ästchen-Verwaltung.
   const twigField = new TwigField(world, scene);
 
+  // Akku-Anzeige (HTML-Overlay über dem Canvas).
+  const batteryUI = createBatteryUI();
+
   // Kollisions-Ereignisse aus Rapier — der "Stoßsensor" des Roboters.
   const events = new RAPIER.EventQueue(true);
 
-  // — Klick auf den Rasen -> dort ein Ästchen fallen lassen ————————————
-  // Ein Ziehen (Kamera drehen) soll kein Ästchen erzeugen — darum merken wir
-  // uns die Maus-Position beim Drücken und prüfen beim Loslassen, ob sie sich
-  // kaum bewegt hat.
+  // — Zeiger: Roboter ziehen, sonst Ästchen setzen / Kamera drehen ————————
+  // Trifft der Zeiger beim Drücken den Roboter, ziehen wir ihn (drag & drop) —
+  // so holt man ihn auch zurück, wenn er außerhalb des Drahts angehalten hat.
+  // Sonst gilt: kurzer Klick auf den Rasen -> Ästchen; Ziehen -> Kamera. Ein
+  // Ziehen soll kein Ästchen erzeugen, darum merken wir uns die Zeiger-
+  // Position beim Drücken und prüfen beim Loslassen, ob sie sich kaum bewegt.
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const hitPoint = new THREE.Vector3();
   let downX = 0;
   let downY = 0;
+  let draggingRobot = false;
+
+  /** Rechnet Zeiger-Pixel in den three.js-Bereich -1..+1 um. */
+  function setPointer(e: PointerEvent): void {
+    pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  }
 
   renderer.domElement.addEventListener('pointerdown', (e) => {
     downX = e.clientX;
     downY = e.clientY;
-  });
-  renderer.domElement.addEventListener('pointerup', (e) => {
-    const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
-    if (moved > 6) return; // war ein Ziehen, kein Klick
 
-    // Mausposition in den Bereich -1..+1 umrechnen und einen Strahl in die
-    // Szene schießen; wo er die Boden-Ebene trifft, kommt das Ästchen hin.
-    pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-    pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    // Trifft der Strahl den Roboter? Dann ziehen wir ihn statt der Kamera.
+    setPointer(e);
+    raycaster.setFromCamera(pointer, camera);
+    if (raycaster.intersectObject(robot, true).length > 0) {
+      draggingRobot = true;
+      controls.enabled = false; // Kamera-Drehen währenddessen aus
+      controller.beginDrag();
+      renderer.domElement.setPointerCapture(e.pointerId);
+    }
+  });
+
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!draggingRobot) return;
+    setPointer(e);
+    raycaster.setFromCamera(pointer, camera);
+    if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+      controller.dragTo(hitPoint.x, hitPoint.z);
+    }
+  });
+
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    // Wurde der Roboter gezogen? Hier absetzen — kein Ästchen, kein Drehen.
+    if (draggingRobot) {
+      draggingRobot = false;
+      controller.endDrag();
+      controls.enabled = true;
+      renderer.domElement.releasePointerCapture(e.pointerId);
+      return;
+    }
+
+    const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+    if (moved > 6) return; // war ein Ziehen (Kamera), kein Klick
+
+    // Wo der Strahl die Boden-Ebene trifft, kommt das Ästchen hin.
+    setPointer(e);
     raycaster.setFromCamera(pointer, camera);
     if (!raycaster.ray.intersectPlane(groundPlane, hitPoint)) return;
 
@@ -140,19 +177,17 @@ async function main(): Promise<void> {
     while (accumulator >= FIXED_DT) {
       controller.fixedUpdate(FIXED_DT);
       world.step(events);
-      // Nur ein Stoß gegen eine Wand zählt als "anstoßen". Ästchen-Berührungen
-      // schiebt der Roboter einfach weg — oder bleibt daran hängen.
+      // Berührt der Roboter ein Hindernis (ein Ästchen), zählt das als Stoß.
       events.drainCollisionEvents((h1, h2, started) => {
         if (!started) return;
-        if (h1 !== robotHandle && h2 !== robotHandle) return;
-        const other = h1 === robotHandle ? h2 : h1;
-        if (wallHandles.has(other)) controller.reportBump();
+        if (h1 === robotHandle || h2 === robotHandle) controller.reportBump();
       });
       accumulator -= FIXED_DT;
     }
 
     controller.sync(frameDt); // Physik-Pose ins Sicht-Modell übernehmen
     twigField.sync(); // Ästchen mitbewegen
+    batteryUI.update(controller.batteryLevel, controller.activity);
 
     // Lade-Leuchte: pulsiert sanft, solange der Roboter andockt und lädt.
     ledMat.emissiveIntensity = controller.isCharging

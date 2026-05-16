@@ -24,9 +24,10 @@ oder verlieren. Man schaut einfach dem Roboter zu, wie er den Garten mäht. Endl
 ### Wie er fährt
 
 - Der Roboter fährt **ganz allein** (autonom). Niemand steuert ihn.
-- Er fährt **geradeaus**, bis er an eine Grenze oder ein Hindernis stößt. Dann fährt er
-  ein kleines Stück **zurück** und dreht sich in eine **zufällige Richtung** weg.
-  Genau so macht es ein echter Mähroboter mit seinem Stoßsensor.
+- Er fährt **geradeaus**, bis er den **Begrenzungsdraht** (siehe unten) erreicht oder
+  an ein **Hindernis stößt**. Dann fährt er ein kleines Stück **zurück** und dreht sich
+  weg. Am Draht hängt der Drehwinkel davon ab, wie schräg er ihn getroffen hat; an
+  einem Hindernis dreht er sich in eine **zufällige Richtung**.
 - Er hat **zwei Räder mit je einem Motor** (das nennt man *Differentialantrieb*).
   Der Roboter fährt **nur**, weil sich seine Räder drehen — er wird nicht "gebeamt".
   - Beide Räder gleich schnell → er fährt geradeaus.
@@ -40,8 +41,8 @@ Die Werte (Höchstgeschwindigkeit, Beschleunigung, Drehgeschwindigkeit) sollen
 ## Der Garten (die Welt)
 
 - Der **Rasen** ist erst einmal **rechteckig und flach**.
-- **Haus, Baum und Pflanze blockieren** den Roboter — er stößt dagegen wie an die
-  Rasenkante (anstoßen → zurück → wegdrehen).
+- **Haus, Baum und Pflanze blockieren** den Roboter — er **stößt** physisch dagegen
+  und weicht aus (anstoßen → zurück → wegdrehen).
 - Über den Rasen legen wir ein unsichtbares **Gitter aus vielen kleinen Feldern**.
   Jedes Feld merkt sich eine Zahl: *Wie lang ist hier das Gras?*
   - Fährt der Roboter über ein Feld, wird das Gras dort **kurz** ("gemäht").
@@ -51,6 +52,28 @@ Die Werte (Höchstgeschwindigkeit, Beschleunigung, Drehgeschwindigkeit) sollen
 - Am Anfang zeigen wir die Grashöhe nur über die **Farbe** (lang = dunkler,
   kurz = heller). Echtes 3D-Gras kommt später.
 
+### Der Begrenzungsdraht ("fence wire")
+
+So wie bei einem **echten Mähroboter** liegt ein dünner **Draht** als geschlossene
+Schleife im Rasen — ein Stück von der Kante nach innen. Der Roboter hat **zwei
+Spulen-Sensoren**, einen vorne und einen hinten. Jede Spule "spürt", ob sie noch
+**innerhalb** der Schleife ist oder schon **draußen**.
+
+- Vordere Spule draußen → die Nase hat den Draht überquert → der Roboter setzt
+  zurück und dreht vom Draht weg. Er **stößt also nirgends an** — er spürt die
+  Grenze und kehrt vorher um.
+- Beide Spulen draußen → der ganze Roboter ist aus der Schleife heraus. Dann
+  **hält er an** — genau wie ein echter Mähroboter, der seine Grenze verliert.
+  Man kann ihn dann einfach zurück auf den Rasen ziehen (siehe *Den Roboter
+  anfassen*).
+
+Der Draht ist als **dünne Linie sichtbar**, damit man versteht, warum der Roboter
+dort umkehrt. Der schmale Streifen zwischen Draht und Rasenkante bleibt ungemäht —
+wie der ungemähte Rand bei einem echten Rasen.
+
+Noch ist der Draht ein festes **Rechteck**. Ein frei **verlegbarer** Draht und
+krumme Rasenformen kommen später.
+
 ## Die Kamera
 
 Eine **Dreh-Kamera** (Orbit): Man kann mit Maus oder Finger den Garten **drehen** und
@@ -58,6 +81,13 @@ Eine **Dreh-Kamera** (Orbit): Man kann mit Maus oder Finger den Garten **drehen*
 anschaut. Es bleibt aber eine ruhige Diorama-Ansicht von schräg oben.
 
 Das Spiel soll auf **Computer (Maus)** und **Tablet (Finger)** laufen.
+
+## Den Roboter anfassen
+
+Man kann den Roboter mit Maus oder Finger **packen und verschieben** (drag and drop):
+anheben, woanders absetzen, weiterschauen. So holt man ihn auch zurück, falls er
+einmal außerhalb des Drahts angehalten hat. Beim Anheben stehen seine Räder still —
+wie bei einem echten Mähroboter, den man hochhebt.
 
 ## Technik (Tech-Stack)
 
@@ -99,8 +129,8 @@ Mähspur über Farbe).
 **Später geplant** (notiert, damit wir es nicht vergessen — aber jetzt noch nicht):
 
 - Echtes **3D-Gras** mit Höhe (Gras-Büschel statt nur Farbe)
-- **Krumme Rasenformen** und ein verlegbarer **Begrenzungsdraht**
-- **Ladestation** mit Akku: Roboter fährt bei leerem Akku heim und lädt
+- **Krumme Rasenformen** und ein frei **verlegbarer Begrenzungsdraht** (der Draht
+  selbst ist schon da, aber noch ein festes Rechteck)
 - **Hügel / Gelände** statt flachem Rasen
 - **Schlupf bei nassem Wetter** (Räder drehen durch)
 - Fertige, detaillierte **3D-Modelle** statt Grundformen

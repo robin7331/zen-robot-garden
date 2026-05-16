@@ -5,8 +5,13 @@ import { SIZES } from './tokens';
  * Die Physik-Grundlage (Rapier).
  *
  * Rapier ist der "Physik-Rechner": Er kennt Trägheit, Kräfte, Schwerkraft und
- * das Anstoßen von Körpern. Hier richten wir die Welt ein und stellen Boden
- * und unsichtbare Wände auf.
+ * das Anstoßen von Körpern. Hier richten wir die Welt ein und stellen den
+ * Boden auf.
+ *
+ * Die Rasen-Grenze ist KEINE Wand mehr, sondern der Begrenzungsdraht (siehe
+ * `wire.ts`): Der Roboter spürt ihn mit seinen Spulen-Sensoren und kehrt um,
+ * bevor er irgendwo anstößt. Physische Kollision gibt es nur noch mit echten
+ * Hindernissen (Ästchen, später Haus/Baum).
  *
  * Rapier ist in WebAssembly geschrieben und muss erst geladen werden — darum
  * gibt es `initPhysics()`, das einmal ganz am Anfang `await`-et werden muss.
@@ -15,8 +20,10 @@ import { SIZES } from './tokens';
 /**
  * Kollisions-Gruppen. Jeder Collider gehört einer Gruppe an und legt fest,
  * mit welchen Gruppen er überhaupt zusammenstößt. So ignoriert der Roboter
- * den Boden (er ist sowieso in der Ebene eingesperrt), stößt aber an Wände
- * und Ästchen.
+ * den Boden (er ist sowieso in der Ebene eingesperrt), stößt aber an Ästchen.
+ *
+ * `wall` ist für später reserviert — feste Hindernisse wie Haus und Baum
+ * bekommen diese Gruppe, dann stößt der Roboter auch an sie.
  */
 export const GROUP = {
   ground: 0b0001,
@@ -63,44 +70,4 @@ export function addGround(world: RAPIER.World): void {
     .setFriction(1) // griffiges Gras — Ästchen rollen nicht ewig weiter
     .setCollisionGroups(collisionGroups(GROUP.ground, GROUP.twig));
   world.createCollider(collider, body);
-}
-
-/**
- * Vier unsichtbare Wände rund um den Rasen. Solange der Rasen rechteckig ist,
- * spielen sie die Rolle des Begrenzungsdrahts: Der Roboter stößt dagegen,
- * setzt zurück und dreht weg. Der echte verlegbare Draht kommt laut CLAUDE.md
- * erst später (zusammen mit krummen Rasenformen).
- *
- * Gibt die Collider-Handles zurück — daran erkennt die Stoß-Erkennung später,
- * dass wirklich eine Wand getroffen wurde (und nicht nur ein Ästchen).
- */
-export function addBoundaryWalls(world: RAPIER.World): number[] {
-  const halfW = SIZES.lawnWidth / 2;
-  const halfD = SIZES.lawnDepth / 2;
-  const t = 0.25; // halbe Wand-Dicke
-  const h = 0.5; // halbe Wand-Höhe
-
-  // Je Wand: Mittelpunkt-X, Mittelpunkt-Z, halbe Größe X, halbe Größe Z.
-  // Die Innenseite jeder Wand liegt genau auf der Rasenkante.
-  const walls: ReadonlyArray<readonly [number, number, number, number]> = [
-    [0, halfD + t, halfW + 2 * t, t], // hinten  (+Z)
-    [0, -halfD - t, halfW + 2 * t, t], // vorne   (-Z)
-    [halfW + t, 0, t, halfD], // rechts  (+X)
-    [-halfW - t, 0, t, halfD], // links   (-X)
-  ];
-
-  const handles: number[] = [];
-  for (const [cx, cz, hx, hz] of walls) {
-    const body = world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(cx, h, cz),
-    );
-    const collider = world.createCollider(
-      RAPIER.ColliderDesc.cuboid(hx, h, hz).setCollisionGroups(
-        collisionGroups(GROUP.wall, GROUP.robot | GROUP.twig),
-      ),
-      body,
-    );
-    handles.push(collider.handle);
-  }
-  return handles;
 }
