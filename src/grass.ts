@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { COLORS, SIZES, BLADES } from './tokens';
-import { terrainHeightTexture } from './terrain';
+import { COLORS, SIZES, BLADES, TERRAIN } from './tokens';
+import { terrainHeightTexture, GX, GZ } from './terrain';
 import type { MowGrid } from './mowGrid';
 
 /**
@@ -138,10 +138,15 @@ const VERTEX_SHADER = /* glsl */ `
   const float STUB_MIN = ${glslFloat(BLADES.stubMin)};
   const float WIND_SPEED = ${glslFloat(BLADES.windSpeed)};
   const float WIND_STRENGTH = ${glslFloat(BLADES.windStrength)};
+  const float WIND_WAVE_FREQ = ${glslFloat((Math.PI * 2) / BLADES.windWaveLength)};
+  const float WIND_GUST_SPEED = ${glslFloat(BLADES.windGustSpeed)};
+  const float WIND_GUST_FREQ = ${glslFloat((Math.PI * 2) / BLADES.windGustLength)};
   const float STRIPE_WIDTH = ${glslFloat(BLADES.stripeWidth)};
   const vec2 LAWN = vec2(${glslFloat(SIZES.lawnWidth)}, ${glslFloat(SIZES.lawnDepth)});
+  // Gelände-Höhenkarte: GX x GZ Stützpunkte, ein Texel je Punkt.
+  const vec2 TERRAIN_GRID = vec2(${glslFloat(GX)}, ${glslFloat(GZ)});
+  const float TERRAIN_CELL = ${glslFloat(TERRAIN.cellSize)};
   const vec2 WIND_DIR = normalize(vec2(0.85, 0.5));
-  const float TAU = 6.28318530;
   const float PI = 3.14159265;
 
   void main() {
@@ -191,21 +196,37 @@ const VERTEX_SHADER = /* glsl */ `
       local.x * sr + local.z * cr + aOffset.y
     );
 
-    // Wind: eine langsame Sinus-Welle, globale Richtung + Halm-Phase. Biegung
-    // proportional frac^2 — der Fuß bleibt verankert, die Spitze wandert am
-    // weitesten. Stummel und plattgedrücktes Gras wehen kaum.
-    float phase = uTime * WIND_SPEED + aRandom.x * TAU;
+    // Wind als wandernde Welle: die Phase hängt von der Position LÄNGS des
+    // Windes ab — Nachbar-Halme schwingen synchron, ferne versetzt; so läuft
+    // eine sichtbare Welle über den Rasen statt gleichförmigem Wehen. Ein
+    // kleiner Halm-Zufall (aRandom.x) bricht die Welle leicht auf.
+    float along = dot(aOffset, WIND_DIR);
+    float phase = uTime * WIND_SPEED - along * WIND_WAVE_FREQ + aRandom.x * 0.6;
     float sway = sin(phase) + 0.25 * sin(phase * 2.3);
-    float windAmp = WIND_STRENGTH * bladeHeight * (1.0 - flatten);
+
+    // Böen-Hüllkurve: eine zweite, viel längere und langsamere Welle moduliert
+    // die Stärke — manche Zonen wehen kräftig, andere ruhen gerade.
+    float gust = 0.55 + 0.45 * sin(uTime * WIND_GUST_SPEED - along * WIND_GUST_FREQ);
+
+    // Biegung proportional frac^2 — der Fuß bleibt verankert, die Spitze
+    // wandert am weitesten. Höheres Gras fängt mehr Wind: zusätzlich zur
+    // Halm-Höhe skaliert die Amplitude mit der Gras-Länge der Zelle, darum
+    // wehen kurz gemähtes Gras und Stummel kaum, langes Gras kräftig.
+    float catch = mix(0.18, 1.0, cellHeight);
+    float windAmp = WIND_STRENGTH * bladeHeight * catch * gust * (1.0 - flatten);
     world.xz += WIND_DIR * sway * windAmp * frac * frac;
 
     // Geländehöhe am Halm-Fuß abtasten und den ganzen Halm darauf heben — so
     // wächst das Gras auf den Hügeln statt durch sie hindurch. Der Roboter-
     // Schatten und die Mäh-Logik bleiben davon unberührt (reines 2D).
-    float terrainH = texture2D(uTerrainTex, vec2(
-      (aOffset.x + LAWN.x * 0.5) / LAWN.x,
-      (aOffset.y + LAWN.y * 0.5) / LAWN.y
-    )).r;
+    //
+    // Die Höhen-Textur hat GENAU einen Texel je Gelände-Stützpunkt. Stützpunkt
+    // i muss darum auf den Texel-MITTELpunkt (i + 0.5) / GX zeigen — sonst
+    // sampelt der Halm bis zu einen halben Texel daneben, sitzt minimal zu hoch
+    // oder zu tief, und die Mäh-Ebene (die heightAt() exakt nutzt) stößt
+    // sichtbar durch den Gras-Teppich.
+    vec2 tIdx = (aOffset + LAWN * 0.5) / TERRAIN_CELL; // Stützpunkt-Index 0..GX-1
+    float terrainH = texture2D(uTerrainTex, (tIdx + 0.5) / TERRAIN_GRID).r;
     world.y += terrainH;
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 1.0);

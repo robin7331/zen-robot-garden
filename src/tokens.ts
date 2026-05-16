@@ -176,8 +176,16 @@ export const BLADES = {
   stubMin: 0.26,
   flattenRadius: 0.25, // m — Radius der Plattdrück-Scheibe unter dem Roboter
   flattenRecoverTime: 1.5, // s — wie lang plattgedrücktes Gras zum Aufrichten braucht
-  windSpeed: 1.2, // wie schnell die Wind-Welle läuft
-  windStrength: 0.28, // Wind-Stärke — Anteil der Halm-Höhe, um den die Spitze wandert
+  windSpeed: 1.2, // wie schnell die Wind-Welle schwingt (zeitlich)
+  windStrength: 0.46, // Wind-Stärke — Anteil der Halm-Höhe, um den die Spitze wandert
+  // Wind als wandernde Welle: die Schwing-Phase hängt von der Position längs
+  // des Windes ab, darum schwingen Nachbar-Halme synchron und ferne versetzt —
+  // eine sichtbare Welle, die über den Rasen läuft, statt gleichförmigem Wehen.
+  windWaveLength: 2.6, // m — Abstand zweier Wellenkämme der Schwing-Welle
+  // Böen-Hüllkurve: eine zweite, viel längere und langsamere Welle moduliert
+  // die Wind-Stärke — manche Zonen wehen kräftig, andere ruhen gerade.
+  windGustSpeed: 0.33, // wie schnell die Böen-Hüllkurve pulsiert
+  windGustLength: 7.5, // m — Länge einer Böe (ruhige + windige Zone zusammen)
 
   // Mäh-Streifen: helle/dunkle Bänder im gemähten Gras — der typische
   // "frisch gemähter Rasen"-Look. Weltachsen-parallele Sinus-Bänder.
