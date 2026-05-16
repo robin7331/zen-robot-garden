@@ -64,6 +64,11 @@ export const DRIVE = {
 
   backupTime: 0.8, // s — wie lang nach einem Stoß gegen ein Hindernis zurückgesetzt wird
 
+  // — Heimfahren über den Leitdraht ——————————————————————————————————
+  followLookahead: 0.35, // m — Vorausschau-Punkt ("Carrot") des Leitdraht-Linienfolgers
+  dockDropRadius: 0.45, // m — Fang-Radius: wird der Roboter so nah an der Station
+  //                       abgesetzt, dockt er an (≈ Stations-Grundfläche)
+
   // Drehung nach einem Stoß gegen ein Hindernis: ein zufälliger Winkel.
   collisionTurnMin: 1.2, // rad — kleinste Drehung (~69°)
   collisionTurnMax: 3.0, // rad — größte Drehung (~172°)
@@ -85,6 +90,27 @@ export const DRIVE = {
 export const BATTERY = {
   drain: 0.022, // pro Sekunde beim Fahren — voll -> niedrig in ~34 s
   charge: 0.08, // pro Sekunde an der Station — fast leer -> voll in ~12 s
-  low: 0.25, // ab hier fährt der Roboter zur Ladestation heim
+  low: 0.5, // ab hier sucht der Roboter den Leitdraht und fährt heim
+  //            (~23 s Reserve: deckt eine Heimfahrt plus einen Stoß)
   full: 0.99, // ab hier verlässt er die Station wieder
 } as const;
+
+/**
+ * Die Nägel des LEITDRAHTS — die offene Draht-Linie, der der Roboter mit
+ * niedrigem Akku heim zur Ladestation folgt. Weltkoordinaten X/Z in Metern.
+ *
+ * Der Begrenzungsdraht (geschlossene 4-Nagel-Schleife) wird dagegen aus
+ * lawnWidth/lawnDepth/wireInset abgeleitet — siehe wire.ts.
+ *
+ *   nail[0] = Dock — in der Ladestation an der +X-Kante. Muss mit dem in
+ *             main.ts aus der Stations-Pose berechneten Andock-Punkt
+ *             übereinstimmen (Station bei x≈3,6 -> Dock x≈3,54).
+ *   nail[1] = ein sanfter Knick quer durch den Garten (obtus, kein Eck-Pivot).
+ *   nail[2] = fernes Ende — eine echte Y-Verzweigung auf den Begrenzungsdraht
+ *             an der -X-Kante (x = -(lawnWidth/2 - wireInset) = -3,6).
+ */
+export const LEITDRAHT_NAILS = [
+  { x: 3.54, z: -1.6 },
+  { x: 0.4, z: 0.3 },
+  { x: -3.6, z: 1.0 },
+] as const;

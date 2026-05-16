@@ -74,6 +74,38 @@ wie der ungemähte Rand bei einem echten Rasen.
 Noch ist der Draht ein festes **Rechteck**. Ein frei **verlegbarer** Draht und
 krumme Rasenformen kommen später.
 
+### Der Leitdraht (Heimweg)
+
+Wenn der Akku fast leer ist, muss der Roboter zur **Ladestation** zurück.
+Dafür gibt es einen zweiten Draht: den **Leitdraht**. Er liegt quer durch den
+ganzen Garten — ein Ende steckt in der Ladestation, das andere Ende ist an
+den Begrenzungsdraht angeschlossen. Das nennt man eine **Y-Verzweigung**: wie
+ein Ast, der an einem Zweig hängt. In Wirklichkeit ist es ein einziger
+physischer Draht.
+
+So findet der Roboter heim — genau wie ein echter Mähroboter:
+
+1. **Suchen:** Der Akku ist niedrig. Die Mähklinge geht aus (er mäht jetzt
+   nicht mehr), aber er fährt **geradeaus weiter** und prallt am
+   Begrenzungsdraht ab — bis seine vordere Spule den **Leitdraht** überquert.
+   Weil der Leitdraht quer durch den ganzen Garten läuft, findet er ihn
+   schnell.
+2. **Folgen:** Jetzt fährt der Roboter genau am Leitdraht **entlang**, immer
+   Richtung Ladestation. Er schaut dabei ein kleines Stück voraus auf den
+   Draht und lenkt dorthin — so fährt er auch um Knicke sauber herum.
+3. **Laden:** An der Station angekommen, dockt er an und lädt. Ist der Akku
+   voll, fährt er rückwärts heraus und mäht weiter.
+
+Geht der Akku doch einmal ganz auf **0** (zum Beispiel, weil der Roboter
+unterwegs oft angestoßen ist), bleibt er stehen — er ist **leer** ("dead").
+Seine kleine grüne Leuchte oben geht dann **aus**. Helfen kann man nur, indem
+man ihn mit dem Finger zurück auf die Ladestation **zieht**.
+
+Beide Drähte bestehen aus **Nägeln**: geordnete Punkte, zwischen denen der
+Draht schnurgerade läuft. Die Richtung ändert sich nur an einem Nagel. Die
+Nägel sind als kleine Punkte sichtbar — ein Vorgeschmack darauf, dass man den
+Draht später selbst verlegen kann.
+
 ## Die Kamera
 
 Eine **Dreh-Kamera** (Orbit): Man kann mit Maus oder Finger den Garten **drehen** und
@@ -129,8 +161,10 @@ Mähspur über Farbe).
 **Später geplant** (notiert, damit wir es nicht vergessen — aber jetzt noch nicht):
 
 - Echtes **3D-Gras** mit Höhe (Gras-Büschel statt nur Farbe)
-- **Krumme Rasenformen** und ein frei **verlegbarer Begrenzungsdraht** (der Draht
-  selbst ist schon da, aber noch ein festes Rechteck)
+- **Krumme Rasenformen** und ein frei **verlegbarer Draht**, den man selbst mit
+  **Nägeln** steckt. Das Nagel-Polylinien-Primitiv (gemeinsame Form von
+  Begrenzungs- und Leitdraht) ist der erste Schritt dahin — noch sind beide
+  Drähte feste Formen.
 - **Hügel / Gelände** statt flachem Rasen
 - **Schlupf bei nassem Wetter** (Räder drehen durch)
 - Fertige, detaillierte **3D-Modelle** statt Grundformen

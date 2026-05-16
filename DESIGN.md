@@ -222,6 +222,30 @@ Alles bewegt sich **ruhig und langsam** — die Szene ist bewusst zen.
   lange/ruhige Periode, wie bei schwacher Brise. Reine Vertex-Animation im Shader.
   Frisch gemähte Stummel wiegen kaum (zu kurz).
 
+## Heimweg: Leitdraht & Akku
+
+Werte fürs autonome Heimfahren über den Leitdraht. Startwerte, im Code
+(`tokens.ts`) feinjustierbar — es gibt bewusst kein Einstell-Panel.
+
+| Token | Wert | Was |
+|---|---|---|
+| `BATTERY.low` | **0,5** | ab hier sucht der Roboter den Leitdraht (≈ 23 s Reserve) |
+| `followLookahead` | **0,35 m** | Vorausschau-Punkt ("Carrot") des Leitdraht-Linienfolgers |
+| `dockDropRadius` | **0,45 m** | Fang-Radius: so nah abgesetzt, dockt der Roboter an |
+| `DOCK_RADIUS` | 0,18 m | präzise Ankunft des autonomen Linienfolgers an der Station |
+
+**Leitdraht-Nägel** (`LEITDRAHT_NAILS`, Weltkoordinaten X/Z in Metern) — die
+offene Draht-Linie vom Dock zur Y-Verzweigung am Begrenzungsdraht:
+
+| Nagel | X | Z | Was |
+|---|---|---|---|
+| 0 | 3,54 | −1,6 | Dock — in der Ladestation |
+| 1 | 0,4 | 0,3 | sanfter Knick |
+| 2 | −3,6 | 1,0 | Y-Verzweigung auf den Begrenzungsdraht |
+
+Beide Drähte teilen sich die Farbe `wire` (es ist physisch ein Draht). Die
+Nägel sind als kleine Punkte in derselben Farbe sichtbar.
+
 ## UI / Bedien-Oberfläche
 
 So wenig "Chrome" wie möglich — die Szene ist der Star.

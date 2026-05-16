@@ -18,6 +18,8 @@ import { COLORS, SIZES } from '../tokens';
  * Benannte Teile für spätere Animation (Physik kommt später):
  *   'wheelLeft', 'wheelRight' — drehen sich beim Fahren um ihre X-Achse
  *   'blade'                   — Mähklingen-Scheibe, dreht sich um Y
+ *   'statusLed'               — kleine Leuchte: an solange lebendig, aus bei
+ *                               leerem Akku ('dead')
  */
 
 // — Maße des Roboters (Meter) ———————————————————————————————————
@@ -101,7 +103,33 @@ export function createRobot(): THREE.Group {
   blade.name = 'blade';
   blade.position.set(0, GROUND_GAP / 2, 0.03);
 
-  robot.add(bodyMain, bodyCap, sensor, wheelLeft, wheelRight, caster, blade);
+  // — Status-LED oben auf dem Deckel: sanftes Grün, solange der Roboter
+  //   lebt; dunkel bei leerem Akku ('dead'). So sieht man auf einen Blick,
+  //   ob er nur lädt/steht — oder wirklich leer ist. Die Leucht-Stärke
+  //   setzt der RobotController pro Bild. —
+  const ledMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(COLORS.chargeLed),
+    emissive: new THREE.Color(COLORS.chargeLed),
+    emissiveIntensity: 1,
+    flatShading: true,
+    roughness: 0.6,
+    metalness: 0,
+  });
+  const bodyTop = GROUND_GAP + BODY_MAIN_H + BODY_CAP_H;
+  const statusLed = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.05), ledMat);
+  statusLed.name = 'statusLed';
+  statusLed.position.set(0, bodyTop + 0.015, 0.12);
+
+  robot.add(
+    bodyMain,
+    bodyCap,
+    sensor,
+    wheelLeft,
+    wheelRight,
+    caster,
+    blade,
+    statusLed,
+  );
 
   // Jedes Mesh wirft und empfängt Schatten.
   robot.traverse((obj) => {

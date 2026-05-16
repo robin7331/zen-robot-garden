@@ -2,7 +2,12 @@ import * as THREE from 'three';
 import * as RAPIER from '@dimforge/rapier3d-compat';
 import { SIZES, DRIVE, BATTERY } from './tokens';
 import { GROUP, collisionGroups } from './physics';
-import { WIRE, insideWire } from './wire';
+import { BOUNDARY, LEITDRAHT, insideWire } from './wire';
+import {
+  carrotTowardStart,
+  outwardNormal,
+  signedDistanceToPolyline,
+} from './polyline';
 import type { RobotActivity } from './ui';
 
 /**
@@ -30,13 +35,19 @@ import type { RobotActivity } from './ui';
  * Begrenzungsdrahts ist (auf dem Mäh-Rasen) oder schon AUSSERHALB:
  *
  *   - Vordere Spule draußen, hintere drinnen -> die Nase hat den Draht
- *     überquert -> der Roboter setzt zurück und dreht vom Draht weg. Wie
- *     schräg er den Draht getroffen hat, bestimmt, wie weit er sich dreht.
+ *     überquert -> der Roboter setzt zurück und dreht vom Draht weg.
  *   - Beide Spulen draußen -> der ganze Roboter ist aus der Schleife heraus.
  *     Dann hält er an (wie ein echter Mähroboter, der seine Grenze verliert).
  *
- * Beim Heimfahren zur Ladestation ist die Draht-Erkennung aus: die Station
- * steht an der Rasenkante, dorthin darf der Roboter den Draht überfahren.
+ * == Wie der Roboter heimfindet (der Leitdraht) ==
+ *
+ * Ist der Akku niedrig, schaltet der Roboter auf `seeking`: Klingen aus, er
+ * fährt geradeaus weiter (am Begrenzungsdraht prallt er weiter ab) — bis
+ * seine vordere Spule den *Leitdraht* überquert. Den erkennt er am Vorzeichen-
+ * Wechsel der Distanz zur Leitdraht-Polylinie. Dann folgt er dem Leitdraht
+ * per Pure-Pursuit (Vorausschau-Punkt) heim zur Ladestation. Es gibt also
+ * keinen "geschummelten" Direktkurs mehr — der Roboter muss den Draht
+ * physisch finden und ihm folgen.
  *
  * Daneben gibt es weiter die Stoß-Erkennung für echte Hindernisse (Ästchen,
  * später Haus/Baum): ein physischer Zusammenstoß löst Zurücksetzen + Drehen
@@ -73,9 +84,9 @@ const FORCE_MAX = 30; // N — eine Reibungskraft kann nicht beliebig groß werd
 
 const BLADE_SPIN = 6; // rad/s — Drehzahl der Mähklinge beim Fahren
 
-// — Heimfahren zur Ladestation ————————————————————————————————————
-const STEER_GAIN = 1.6; // wie kräftig der Roboter zum Ziel einlenkt
-const DOCK_RADIUS = 0.18; // ab dieser Nähe zur Station gilt er als angedockt
+// — Heimfahren ————————————————————————————————————————————————————
+const STEER_GAIN = 1.6; // wie kräftig der Roboter zu seinem Ziel einlenkt
+const DOCK_RADIUS = 0.18; // so nah an der Station gilt der Roboter als angedockt
 
 // — Drehen ————————————————————————————————————————————————————————
 const TURN_DONE = 0.1; // rad — so nah am Ziel-Kurs gilt eine Drehung als fertig
@@ -87,20 +98,24 @@ const DRAG_LIMIT_Z = SIZES.lawnDepth / 2 - SIZES.robotLength / 2;
 
 /**
  * Was der Roboter gerade tut.
- *   driving  — geradeaus mähen
- *   seeking  — Akku niedrig, fährt zur Ladestation heim
- *   charging — steht angedockt und lädt
- *   backing  — nach Draht/Stoß (oder vom Laden) ein Stück zurücksetzen
- *   turning  — danach auf den Ziel-Kurs drehen
- *   stopped  — angehalten, weil aus der Draht-Schleife entkommen
- *   held     — wird gerade mit dem Zeiger gezogen
+ *   driving   — geradeaus mähen
+ *   seeking   — Akku niedrig, fährt geradeaus und sucht den Leitdraht
+ *   following — folgt dem gefundenen Leitdraht heim zur Station
+ *   charging  — steht angedockt und lädt
+ *   backing   — nach Draht/Stoß (oder vom Laden) ein Stück zurücksetzen
+ *   turning   — danach auf den Ziel-Kurs drehen
+ *   dead      — Akku komplett leer, alles steht still
+ *   stopped   — angehalten, weil aus der Draht-Schleife entkommen
+ *   held      — wird gerade mit dem Zeiger gezogen
  */
 type State =
   | 'driving'
   | 'seeking'
+  | 'following'
   | 'charging'
   | 'backing'
   | 'turning'
+  | 'dead'
   | 'stopped'
   | 'held';
 
@@ -134,6 +149,8 @@ export class RobotController {
   private readonly wheelLeftMesh: THREE.Object3D | null;
   private readonly wheelRightMesh: THREE.Object3D | null;
   private readonly bladeMesh: THREE.Object3D | null;
+  // Material der Status-LED — an solange lebendig, aus bei 'dead'.
+  private readonly ledMat: THREE.MeshStandardMaterial | null;
 
   // Motor-Tempo der beiden Räder (Boden-Tempo in m/s).
   private speedLeft = 0;
@@ -148,6 +165,8 @@ export class RobotController {
   private turnDir: 1 | -1 = 1;
   // Ziel-Kurs (absoluter Yaw-Winkel), auf den sich der Roboter dreht.
   private turnTargetYaw = 0;
+  // Zustand, in den `turning` nach Abschluss zurückkehrt.
+  private resumeState: State = 'driving';
   // Wird von außen gesetzt, wenn Rapier eine Kollision meldet (Stoßsensor).
   private bumped = false;
 
@@ -161,6 +180,9 @@ export class RobotController {
   private rearInside = true;
   private senseFrontX = 0;
   private senseFrontZ = 0;
+  // Vorzeichen-Distanz der vorderen Spule zum Leitdraht (für die Erkennung).
+  private leitDist: number | null = null;
+  private leitCrossed = false;
 
   // Ziel-Position beim Ziehen (Weltkoordinaten auf y = 0).
   private dragX = 0;
@@ -183,6 +205,9 @@ export class RobotController {
     this.wheelLeftMesh = view.getObjectByName('wheelLeft') ?? null;
     this.wheelRightMesh = view.getObjectByName('wheelRight') ?? null;
     this.bladeMesh = view.getObjectByName('blade') ?? null;
+    const ledMesh = view.getObjectByName('statusLed') as THREE.Mesh | undefined;
+    this.ledMat =
+      (ledMesh?.material as THREE.MeshStandardMaterial | undefined) ?? null;
 
     // Dynamischer Körper, in Ebene und Hochachsen-Drehung eingesperrt.
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
@@ -251,12 +276,16 @@ export class RobotController {
         return 'charging';
       case 'seeking':
         return 'seeking';
+      case 'following':
+        return 'following';
+      case 'dead':
+        return 'dead';
       case 'stopped':
         return 'stopped';
       case 'held':
         return 'held';
       default:
-        return 'mowing';
+        return 'mowing'; // driving / backing / turning
     }
   }
 
@@ -286,7 +315,8 @@ export class RobotController {
     this.think(dt);
     this.rampMotors(dt);
 
-    if (this.state === 'stopped') return; // Motoren aus -> keine Kräfte
+    // Tot oder angehalten -> Motoren aus, keine Kräfte.
+    if (this.state === 'stopped' || this.state === 'dead') return;
 
     // Reibungskraft je Rad — daraus entsteht die ganze Bewegung.
     this.applyWheelFriction(-TRACK_HALF, this.speedLeft, dt);
@@ -312,12 +342,25 @@ export class RobotController {
       this.wheelRightMesh.rotation.x +=
         (this.speedRight / WHEEL_RADIUS) * frameDt;
     }
-    // Mähklinge dreht moderat, solange der Roboter überhaupt fährt.
-    if (this.bladeMesh) {
-      const moving =
-        Math.abs(this.speedLeft) + Math.abs(this.speedRight) > 0.02;
-      if (moving) this.bladeMesh.rotation.y += BLADE_SPIN * frameDt;
+    // Mähklinge dreht nur, wenn der Roboter wirklich mäht. Sie hängt am
+    // Zustand, nicht am Tempo: `seeking`/`following` fahren genauso schnell
+    // wie `driving`, mähen aber nicht.
+    if (this.bladeMesh && this.bladesOn()) {
+      this.bladeMesh.rotation.y += BLADE_SPIN * frameDt;
     }
+    // Status-LED: leuchtet stetig, solange der Roboter lebt; aus bei 'dead'.
+    if (this.ledMat) {
+      this.ledMat.emissiveIntensity = this.state === 'dead' ? 0 : 1;
+    }
+  }
+
+  /** Mäht der Roboter gerade? Klingen an nur in driving / backing / turning. */
+  private bladesOn(): boolean {
+    return (
+      this.state === 'driving' ||
+      this.state === 'backing' ||
+      this.state === 'turning'
+    );
   }
 
   // — Ziehen ("drag and drop") ———————————————————————————————————————
@@ -347,27 +390,48 @@ export class RobotController {
   }
 
   /**
-   * Beendet das Ziehen: Der Körper wird wieder dynamisch, steht ohne Schwung
-   * still und fährt von neuem los. Liegt das Absetz-Ziel im Rand-Streifen
-   * jenseits des Drahts, erkennt das die vordere Spule und der Roboter fährt
-   * von selbst wieder hinein.
+   * Beendet das Ziehen: Der Körper wird wieder dynamisch und steht ohne
+   * Schwung still. Wo der Roboter abgesetzt wird, entscheidet, wie es
+   * weitergeht:
+   *   - nah genug an der Station (dockDropRadius)  -> andocken und laden
+   *   - sonst, mit leerem Akku                     -> bleibt liegen ('dead')
+   *   - sonst                                      -> fährt normal weiter
    */
   endDrag(): void {
     this.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.bumped = false;
-    this.state = 'driving';
     this.stateTimer = 0;
-    this.targetLeft = DRIVE.maxSpeed;
-    this.targetRight = DRIVE.maxSpeed;
+    this.speedLeft = 0;
+    this.speedRight = 0;
+
+    const p = this.body.translation();
+    const nearDock =
+      Math.hypot(this.dockX - p.x, this.dockZ - p.z) < DRIVE.dockDropRadius;
+
+    if (nearDock) {
+      // An der Station abgesetzt -> andocken und laden (rettet auch 'dead').
+      this.state = 'charging';
+      this.targetLeft = 0;
+      this.targetRight = 0;
+    } else if (this.battery <= 0) {
+      // Leerer Akku, nicht auf dem Dock -> bleibt tot liegen.
+      this.enterDead();
+    } else {
+      // Sonst ganz normal weitermähen.
+      this.state = 'driving';
+      this.targetLeft = DRIVE.maxSpeed;
+      this.targetRight = DRIVE.maxSpeed;
+    }
   }
 
   // — Sensoren ————————————————————————————————————————————————————————
 
   /**
-   * Liest die beiden Spulen-Sensoren: Wo sind vordere und hintere Spule
-   * (Weltkoordinaten) und liegt jede innerhalb der Draht-Schleife?
+   * Liest die Sensoren: die beiden Spulen am Begrenzungsdraht und die
+   * Vorzeichen-Distanz der vorderen Spule zum Leitdraht. Ein Vorzeichen-
+   * Wechsel dort heißt: die Nase hat den Leitdraht überquert.
    */
   private sense(): void {
     const p = this.body.translation();
@@ -377,30 +441,65 @@ export class RobotController {
     const rearZ = p.z + this._fwd.z * COIL_REAR_Z;
     this.frontInside = insideWire(this.senseFrontX, this.senseFrontZ);
     this.rearInside = insideWire(rearX, rearZ);
+
+    // Leitdraht: Vorzeichen-Distanz der vorderen Spule. Wechselt es, hat die
+    // Nase den Draht überquert (ausgewertet nur in `seeking`).
+    const d = signedDistanceToPolyline(
+      LEITDRAHT,
+      this.senseFrontX,
+      this.senseFrontZ,
+    );
+    this.leitCrossed =
+      this.leitDist !== null &&
+      this.leitDist !== 0 &&
+      d !== 0 &&
+      Math.sign(d) !== Math.sign(this.leitDist);
+    this.leitDist = d;
   }
 
-  // — Autonomie: mähen, Draht/Stoß ausweichen, heimfahren und laden ——————
+  // — Autonomie: mähen, Draht/Stoß ausweichen, heimfahren, laden ——————————
   private think(dt: number): void {
-    if (this.state === 'stopped') return;
+    // Tot oder angehalten: nichts denken. ('dead' lässt sich nur durch Ziehen
+    // auf das Dock beleben, 'stopped' durch Zurückziehen auf den Rasen.)
+    if (this.state === 'stopped' || this.state === 'dead') return;
 
-    // Akku: leert sich beim Fahren, lädt nur an der Station.
+    // Akku: leert sich im Betrieb, lädt nur an der Station.
     if (this.state === 'charging') {
       this.battery = Math.min(1, this.battery + BATTERY.charge * dt);
     } else {
       this.battery = Math.max(0, this.battery - BATTERY.drain * dt);
+      if (this.battery <= 0) {
+        // Akku komplett leer -> kompletter Stillstand.
+        this.enterDead();
+        return;
+      }
     }
 
     const bumped = this.bumped;
     this.bumped = false;
 
-    // Ein Stoß gegen ein Hindernis wirkt beim Mähen und beim Heimfahren.
-    if ((this.state === 'driving' || this.state === 'seeking') && bumped) {
-      this.startReaction(this.randomTurnTarget());
+    // Leitdraht gefunden? Nur beim Heimfahren (seeking) zählt das. Vor der
+    // Begrenzungsdraht-Prüfung, damit das Andocken Vorrang hat, wenn der
+    // Leitdraht nahe seiner Y-Verzweigung gekreuzt wird.
+    if (this.state === 'seeking' && this.leitCrossed) {
+      this.state = 'following';
     }
 
-    // Begrenzungsdraht — nur beim normalen Mähen prüfen. Beim Heimfahren darf
-    // der Roboter den Draht überfahren (die Station steht an der Rasenkante).
-    if (this.state === 'driving') {
+    // Stoß gegen ein Hindernis: beim Mähen, Heimfahren und Folgen.
+    if (
+      (this.state === 'driving' ||
+        this.state === 'seeking' ||
+        this.state === 'following') &&
+      bumped
+    ) {
+      // Beim Folgen danach den Leitdraht neu suchen, sonst weiter wie bisher.
+      const resume: State = this.state === 'following' ? 'seeking' : this.state;
+      this.startReaction(this.randomTurnTarget(), resume);
+    }
+
+    // Begrenzungsdraht — beim Mähen UND Heimfahren prüfen, NICHT beim Folgen
+    // (dort kennt der Roboter nur den Leitdraht).
+    if (this.state === 'driving' || this.state === 'seeking') {
       if (!this.frontInside && !this.rearInside) {
         // Beide Spulen draußen -> der ganze Roboter ist entkommen. Anhalten.
         this.enterStopped();
@@ -408,11 +507,11 @@ export class RobotController {
       }
       if (!this.frontInside) {
         // Vordere Spule hat den Draht überquert -> abkehren.
-        this.startReaction(this.computeWireTurnTarget());
+        this.startReaction(this.computeWireTurnTarget(), this.state);
       }
     }
 
-    // Akku niedrig -> heimfahren.
+    // Akku niedrig -> heimfahren: Klingen aus, Leitdraht suchen.
     if (this.state === 'driving' && this.battery <= BATTERY.low) {
       this.state = 'seeking';
     }
@@ -421,23 +520,42 @@ export class RobotController {
 
     switch (this.state) {
       case 'driving':
-        // Beide Räder volles Tempo -> geradeaus.
+      case 'seeking':
+        // Motorisch identisch: beide Räder volles Tempo -> geradeaus. Der
+        // Unterschied ist nur Klingen-aus + Leitdraht-Erkennung in `seeking`.
         this.targetLeft = DRIVE.maxSpeed;
         this.targetRight = DRIVE.maxSpeed;
         break;
 
-      case 'seeking':
-        // Zur Ladestation lenken (dockt selbst an, wenn er da ist).
-        this.steerToDock();
+      case 'following': {
+        // Pure-Pursuit: auf einen Vorausschau-Punkt entlang des Leitdrahts
+        // Richtung Dock zulenken. Ist der Roboter nah genug am Dock, dockt er
+        // an und lädt.
+        const pos = this.body.translation();
+        const dock = LEITDRAHT.nails[0]; // nail[0] = Dock
+        if (Math.hypot(dock.x - pos.x, dock.z - pos.z) < DOCK_RADIUS) {
+          this.state = 'charging';
+          this.targetLeft = 0;
+          this.targetRight = 0;
+          break;
+        }
+        const carrot = carrotTowardStart(
+          LEITDRAHT,
+          pos.x,
+          pos.z,
+          DRIVE.followLookahead,
+        );
+        this.steerTo(carrot.x, carrot.z);
         break;
+      }
 
       case 'charging':
         // Stehen bleiben und laden.
         this.targetLeft = 0;
         this.targetRight = 0;
         if (this.battery >= BATTERY.full) {
-          // Voll — rückwärts aus der Station heraus, dann weiterfahren.
-          this.startReaction(this.randomTurnTarget());
+          // Voll — rückwärts aus der Station heraus, dann weitermähen.
+          this.startReaction(this.randomTurnTarget(), 'driving');
         }
         break;
 
@@ -454,10 +572,7 @@ export class RobotController {
         this.turnDir = diff >= 0 ? 1 : -1;
         this.targetLeft = DRIVE.turnSpeed * this.turnDir;
         this.targetRight = -DRIVE.turnSpeed * this.turnDir;
-        if (Math.abs(diff) < TURN_DONE) {
-          // Akku immer noch leer? Weiter heimfahren, sonst normal mähen.
-          this.state = this.battery <= BATTERY.low ? 'seeking' : 'driving';
-        }
+        if (Math.abs(diff) < TURN_DONE) this.state = this.resumeState;
         break;
       }
     }
@@ -470,13 +585,14 @@ export class RobotController {
 
   /**
    * Startet die Ausweich-Reaktion: ein Stück zurücksetzen, danach auf den
-   * übergebenen Ziel-Kurs drehen. Für Draht und Stoß dieselbe Bewegung —
-   * nur der Ziel-Kurs wird verschieden berechnet.
+   * übergebenen Ziel-Kurs drehen und in `resume` zurückkehren. Für Draht und
+   * Stoß dieselbe Bewegung — nur Ziel-Kurs und Folge-Zustand sind verschieden.
    */
-  private startReaction(turnTargetYaw: number): void {
+  private startReaction(turnTargetYaw: number, resume: State): void {
     this.state = 'backing';
     this.stateTimer = DRIVE.backupTime;
     this.turnTargetYaw = turnTargetYaw;
+    this.resumeState = resume;
   }
 
   /** Zufälliger Ziel-Kurs nach einem Stoß (oder beim Verlassen der Station). */
@@ -491,33 +607,24 @@ export class RobotController {
   }
 
   /**
-   * Berechnet den Ziel-Kurs nach einer Draht-Überquerung.
+   * Berechnet den Ziel-Kurs nach einer Begrenzungsdraht-Überquerung.
    *
-   * Der Kurs wird am Draht "gespiegelt" — wie bei einem echten Mähroboter,
-   * der aus seinen Spulen den Einfallswinkel kennt: Ein steiler Anstoß
-   * (fast senkrecht) ergibt eine große Drehung (fast Kehrtwende), ein
-   * schräges Streifen nur eine kleine. Etwas Zufall kommt dazu, und am Ende
-   * stellen wir sicher, dass der Roboter deutlich nach innen zeigt.
+   * Der Kurs wird am *überquerten Segment* gespiegelt — wie bei einem echten
+   * Mähroboter, der aus seinen Spulen den Einfallswinkel kennt: ein steiler
+   * Anstoß ergibt eine große Drehung (fast Kehrtwende), ein schräges Streifen
+   * nur eine kleine. Etwas Zufall kommt dazu, und am Ende stellen wir sicher,
+   * dass der Roboter deutlich nach innen zeigt.
    */
   private computeWireTurnTarget(): number {
-    // Welche Draht-Kante hat die vordere Spule überquert? Die Kante mit dem
-    // größeren Überstand gewinnt (wichtig dicht an einer Ecke).
-    const overX = Math.abs(this.senseFrontX) - WIRE.halfW;
-    const overZ = Math.abs(this.senseFrontZ) - WIRE.halfD;
-    let nOutX = 0; // nach außen zeigende Normale der Kante
-    let nOutZ = 0;
-    if (overX >= overZ) {
-      nOutX = Math.sign(this.senseFrontX);
-    } else {
-      nOutZ = Math.sign(this.senseFrontZ);
-    }
+    // Nach-außen zeigende Normale am überquerten Draht-Segment.
+    const n = outwardNormal(BOUNDARY, this.senseFrontX, this.senseFrontZ);
 
-    // Kurs am Draht spiegeln (Reflexion an der Kanten-Linie).
+    // Kurs am Draht spiegeln (Reflexion an der Segment-Linie).
     const fx = this._fwd.x;
     const fz = this._fwd.z;
-    const dot = fx * nOutX + fz * nOutZ;
-    const reflX = fx - 2 * dot * nOutX;
-    const reflZ = fz - 2 * dot * nOutZ;
+    const dot = fx * n.x + fz * n.z;
+    const reflX = fx - 2 * dot * n.x;
+    const reflZ = fz - 2 * dot * n.z;
     let targetYaw = Math.atan2(reflX, reflZ);
 
     // Etwas Zufall, damit nie zweimal dieselbe Spur entsteht (zen).
@@ -525,7 +632,7 @@ export class RobotController {
 
     // Sicher nach innen: höchstens wireTurnMaxDeviation von "geradewegs nach
     // innen" abweichen -> der Roboter zeigt danach immer klar ins Feld.
-    const inwardYaw = Math.atan2(-nOutX, -nOutZ);
+    const inwardYaw = Math.atan2(-n.x, -n.z);
     const dev = THREE.MathUtils.clamp(
       wrapPi(targetYaw - inwardYaw),
       -DRIVE.wireTurnMaxDeviation,
@@ -537,6 +644,17 @@ export class RobotController {
   /** Hält den Roboter an (aus der Draht-Schleife entkommen). */
   private enterStopped(): void {
     this.state = 'stopped';
+    this.zeroMotors();
+  }
+
+  /** Lässt den Roboter tot liegen (Akku komplett leer). */
+  private enterDead(): void {
+    this.state = 'dead';
+    this.zeroMotors();
+  }
+
+  /** Schaltet die Motoren ab und nimmt dem Körper allen Schwung. */
+  private zeroMotors(): void {
     this.speedLeft = 0;
     this.speedRight = 0;
     this.targetLeft = 0;
@@ -546,23 +664,15 @@ export class RobotController {
   }
 
   /**
-   * Lenkt den Roboter zur Ladestation. Liegt das Ziel vorne, fährt er darauf
-   * zu; liegt es seitlich oder hinten, dreht er sich erst hin. Ist er nah
-   * genug, gilt er als angedockt und wechselt ins Laden.
+   * Lenkt den Roboter auf einen Ziel-Punkt zu. Liegt das Ziel vorne, fährt er
+   * darauf zu; liegt es seitlich oder hinten, dreht er sich erst hin.
    */
-  private steerToDock(): void {
+  private steerTo(targetX: number, targetZ: number): void {
     const pos = this.body.translation();
-    const dx = this.dockX - pos.x;
-    const dz = this.dockZ - pos.z;
+    const dx = targetX - pos.x;
+    const dz = targetZ - pos.z;
 
-    if (Math.hypot(dx, dz) < DOCK_RADIUS) {
-      this.state = 'charging';
-      this.targetLeft = 0;
-      this.targetRight = 0;
-      return;
-    }
-
-    // Winkel zwischen Blickrichtung und Richtung zum Ziel (-pi..pi).
+    // Winkel zwischen Blickrichtung und Richtung zum Ziel (-π..π).
     const ahead = dx * this._fwd.x + dz * this._fwd.z;
     const side = this._fwd.x * dz - this._fwd.z * dx;
     const heading = Math.atan2(side, ahead);

@@ -8,7 +8,7 @@ import {
   updateControls,
 } from './camera';
 import { createGarden } from './garden';
-import { createWireMesh } from './wire';
+import { createWireMeshes } from './wire';
 import { createRobot } from './models/robot';
 import { initPhysics, createWorld, addGround } from './physics';
 import { RobotController } from './robotController';
@@ -37,7 +37,8 @@ async function main(): Promise<void> {
   const controls = createControls(camera, renderer.domElement);
 
   scene.add(createGarden());
-  scene.add(createWireMesh()); // sichtbarer Begrenzungsdraht auf dem Rasen
+  // Sichtbare Drähte: Begrenzungsdraht (Schleife) + Leitdraht (Heimweg).
+  scene.add(createWireMeshes());
 
   // Physik-Welt + Boden. Die Rasen-Grenze ist der Begrenzungsdraht (wire.ts),
   // keine Wand — der Roboter spürt ihn mit seinen Spulen-Sensoren.

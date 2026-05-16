@@ -16,7 +16,9 @@ import { COLORS } from './tokens';
 export type RobotActivity =
   | 'mowing'
   | 'seeking'
+  | 'following'
   | 'charging'
+  | 'dead'
   | 'stopped'
   | 'held';
 
@@ -24,7 +26,9 @@ export type RobotActivity =
 const STATUS_TEXT: Record<RobotActivity, string> = {
   mowing: 'mäht',
   seeking: 'fährt heim',
+  following: 'folgt dem Leitdraht',
   charging: 'lädt',
+  dead: 'Akku leer',
   stopped: 'steht außerhalb',
   held: 'wird getragen',
 };
