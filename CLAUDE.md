@@ -14,6 +14,7 @@ Im Garten gibt es:
 - ein kleines **Haus**
 - einen **Baum**
 - eine **Pflanze**
+- ein paar **Gänseblümchen** (Blumen)
 - einen **Mähroboter**, der von ganz allein umherfährt und mäht
 
 Es ist eine **ruhige Sandbox** ("zen"): Es gibt keine Punkte, man kann nicht gewinnen
@@ -61,6 +62,25 @@ Die Werte (Höchstgeschwindigkeit, Beschleunigung, Drehgeschwindigkeit) sollen
   über dem Gitter, die der Roboter kurz mäht, beim Drüberfahren platt drückt
   und die langsam nachwachsen. Eine Farb-Ebene scheint zwischen den Halmen
   durch (lang = dunkler, kurz = heller).
+
+### Blumen
+
+Über den Rasen sind ein paar **Gänseblümchen** gestreut — die kleine weiße
+Blume mit gelber Mitte. Jedes durchläuft einen kleinen **Lebenszyklus**:
+erst ein winziger **Keimling**, dann die fertige **Blüte** (die dann blühen
+bleibt).
+
+Die Blumen verhalten sich wie in einem echten Mähroboter-Garten: Fährt der
+**mähende** Roboter über eine Blume, **schrumpft** sie kurz zum Keimling
+zusammen und wächst von vorne. Auf der oft gemähten Rasenfläche kommen die
+Blumen darum kaum zur vollen Blüte — nur im **ungemähten Randstreifen**
+(zwischen Begrenzungsdraht und Rasenkante) blühen sie in Ruhe ganz auf.
+
+Die Blumen sind reine **Sicht-Modelle** — keine Hindernisse. Der Roboter
+mäht durch sie hindurch, er stößt nicht an ihnen an. Sie stehen an **festen
+Plätzen** (in kleinen Gruppen gestreut) und wiegen sich im selben Wind wie
+das Gras. (Mehr Blumen-Sorten und ein frei pflanzbarer Blumen-Pinsel könnten
+später dazukommen.)
 
 ### Der Begrenzungsdraht ("fence wire")
 

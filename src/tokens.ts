@@ -26,6 +26,12 @@ export const COLORS = {
   twig: '#5a4327', // Ästchen — trockenes, holziges Braun
   wire: '#2c2f26', // Begrenzungsdraht — dünner, dunkler Faden auf dem Rasen
 
+  // Blumen — ein paar Gänseblümchen, sparsam über den Rasen gestreut.
+  flowerStem: '#4a7a32', // Stängel — kräftiges Wiesengrün
+  flowerLeaf: '#5f9a3e', // Keimling-Blättchen — helleres Jungtriebgrün
+  daisyPetal: '#f4f3ee', // Gänseblümchen — weiße Blütenblätter
+  daisyCenter: '#f2c12e', // Gänseblümchen — gelbes Körbchen
+
   // Roboter
   robotBody: '#e8862f', // Körper — warmes Orange, der eine knallige Akzent
   robotDark: '#2a2a2c', // Räder, Klinge, Sensor, Details
@@ -206,6 +212,33 @@ export const BLADES = {
   // "frisch gemähter Rasen"-Look. Weltachsen-parallele Sinus-Bänder.
   stripeWidth: 0.55, // m — Breite eines hellen bzw. dunklen Streifens
   stripeStrength: 0.16, // wie kräftig die Streifen aufhellen/abdunkeln
+} as const;
+
+/**
+ * Blumen — ein paar Gänseblümchen, über den Rasen gestreut (siehe flowers.ts).
+ *
+ * Jedes Gänseblümchen sitzt an einem festen Platz und durchläuft einen kleinen
+ * Lebenszyklus (Keimling -> Blüte). Fährt der mähende Roboter darüber,
+ * schrumpft es zurück zum Keimling. Alle Werte einstellbar.
+ */
+export const FLOWERS = {
+  count: 6, // ein paar Gänseblümchen — eine sparsame Streuung auf 5x5 m
+  seed: 70526, // fester Seed -> die Blumen stehen bei jedem Laden gleich
+  // Blumen wachsen in kleinen Gruppen statt gleichmäßig verteilt — natürlicher.
+  clusterCount: 3, // Anzahl der Streu-Inseln, um die herum Blumen wachsen
+  clusterRadius: 0.55, // m — Streu-Radius einer Insel
+  edgeInset: 0.15, // m — Mindestabstand zur Rasenkante
+
+  // — Lebenszyklus (Dauern in Sekunden) —————————————————————————————
+  seedlingTime: 60, // Keimling -> Blüte
+  mowShrinkTime: 0.4, // s — Einschrumpfen zum Keimling nach dem Übermähen
+
+  // — Wind ————————————————————————————————————————————————————————
+  // Die Blumen wiegen sich wie das Gras: eine wandernde Welle, die Phase hängt
+  // von der Position längs der Windrichtung ab (siehe grass.ts, WIND_DIR).
+  swayStrength: 0.14, // rad — größter Neige-Winkel der Blume
+  swaySpeed: 1.2, // wie schnell die Wieg-Welle schwingt
+  swayWaveLength: 2.6, // m — Abstand zweier Wellenkämme
 } as const;
 
 /**

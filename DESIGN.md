@@ -128,6 +128,10 @@ ganz im Grün-Bereich (siehe "Der Rasen").
 | `plant` | `#5a9b4e` | Pflanze / Strauch |
 | `robot-body` | `#e8862f` | Roboter-Körper (warmes Orange) |
 | `robot-dark` | `#2a2a2c` | Räder, Klinge, Sensor, Details |
+| `flower-stem` | `#4a7a32` | Blumen-Stängel (Wiesengrün) |
+| `flower-leaf` | `#5f9a3e` | Keimling-Blättchen (Jungtriebgrün) |
+| `daisy-petal` | `#f4f3ee` | Gänseblümchen-Blütenblätter (Weiß) |
+| `daisy-center` | `#f2c12e` | Gänseblümchen-Körbchen (Gelb) |
 
 ## Maße & Proportionen
 
@@ -264,6 +268,30 @@ Stilisierter **europäischer** Garten — locker gehalten, nicht streng festgele
 
 Haus, Baum und Pflanze **blockieren** den Roboter (anstoßen → zurück → wegdrehen),
 genau wie die Rasenkante.
+
+## Blumen (`FLOWERS`)
+
+Über den Rasen sind **ein paar Gänseblümchen** in kleinen Gruppen gestreut
+(seed-fest, also bei jedem Laden gleich). Aufbau aus Grundformen, low-poly und
+flat-shaded: kurzer Stängel, gelbes Körbchen, ein Kranz weißer Blütenblätter.
+
+**Lebenszyklus** — jede Blume sitzt an einem festen Platz und altert von
+**Keimling → Blüte** (die Blüte bleibt dann).
+
+- **Mähen:** Fährt der **mähende** Roboter über eine Blume (Schnitt-Radius wie
+  beim Mäh-Gitter), schrumpft sie in `mowShrinkTime` zum Keimling zusammen und
+  altert von vorn. Auf der gemähten Fläche blühen Blumen so kaum auf — nur im
+  ungemähten Randstreifen ganz.
+- Die Blumen sind **keine Hindernisse** (keine Physik-Körper): der Roboter mäht
+  durch sie hindurch. Sie wiegen sich in derselben Wind-Welle wie das Gras.
+
+| Token | Wert | Was |
+|---|---|---|
+| `count` | 6 | Blumen insgesamt |
+| `clusterCount` / `clusterRadius` | 3 / 0,55 m | Streu-Inseln + ihr Radius |
+| `seedlingTime` | 60 s | Keimling → Blüte |
+| `mowShrinkTime` | 0,4 s | Einschrumpfen nach dem Übermähen |
+| `swayStrength` | 0,14 rad | größter Wieg-Winkel |
 
 ## Bewegung & Animation
 

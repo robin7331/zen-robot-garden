@@ -10,6 +10,7 @@ import {
 import { createGarden } from './garden';
 import { MowGrid } from './mowGrid';
 import { GrassField } from './grass';
+import { FlowerField } from './flowers';
 import { createWireMeshes } from './wire';
 import { createRobot } from './models/robot';
 import { initPhysics, createWorld, addGround } from './physics';
@@ -92,6 +93,13 @@ async function main(): Promise<void> {
     grassFootprint.covers(x, z),
   );
   scene.add(grassField.mesh);
+
+  // Blumen: ein paar Gänseblümchen, sparsam über den Rasen gestreut. Sie
+  // altern (Keimling -> Blüte), der mähende Roboter setzt sie zurück. Unter
+  // der Station wächst keine Blume — dieselbe Sperrfläche wie beim Gras.
+  const flowerField = new FlowerField(scene, (x, z) =>
+    grassFootprint.covers(x, z),
+  );
 
   // Andock-Punkt (Weltkoordinaten): kurz vor der Rückwand der Station, mit
   // der (geneigten) Stations-Pose mitgedreht.
@@ -247,6 +255,15 @@ async function main(): Promise<void> {
     }
     mowGrid.update(frameDt);
     grassField.update(elapsed);
+    // Blumen: altern lassen, im Wind wiegen; der mähende Roboter setzt sie
+    // beim Übermähen zurück zum Keimling.
+    flowerField.update(
+      frameDt,
+      elapsed,
+      robot.position.x,
+      robot.position.z,
+      controller.activity === 'mowing',
+    );
     batteryUI.update(controller.batteryLevel, controller.activity);
 
     updateControls(controls, camera); // Damping + Rubber Banding
