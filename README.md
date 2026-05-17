@@ -39,11 +39,13 @@ Mehr Details: [`CLAUDE.md`](./CLAUDE.md) (Projektbeschreibung) und
 ```bash
 npm install
 npm run dev      # Entwicklungsserver mit Live-Reload
-npm run build    # Produktions-Build nach dist/
+npm run build    # Produktions-Build nach docs/
+npm run preview  # gebauten Stand lokal ansehen
 ```
 
 ## Veröffentlichen
 
-Jeder Push auf `main` baut das Spiel und veröffentlicht es über einen
-GitHub-Actions-Workflow ([`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml))
-automatisch auf GitHub Pages.
+`npm run build` legt den fertigen Stand im Ordner `docs/` ab. Dieser Ordner
+ist mit im Repo eingecheckt, und GitHub Pages liefert ihn direkt aus (Einstellung
+"Deploy from branch" → Branch `main`, Pfad `/docs`). Zum Aktualisieren also:
+neu bauen, `docs/` committen, pushen.
