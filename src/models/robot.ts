@@ -101,6 +101,17 @@ export async function createRobot(): Promise<THREE.Group> {
       w.userData.spinAxis = new THREE.Vector3(1, 0, 0)
         .applyQuaternion(q.invert())
         .normalize();
+
+      // Rad-Radius direkt aus dem Mesh messen — nicht raten. Das Rad rollt um
+      // die Quer-Achse (Spiel-X); quer dazu ist es eine Scheibe, deren Y- und
+      // Z-Ausdehnung je der Durchmesser ist. Mittelwert / 2 = Radius. So dreht
+      // sich das Mesh später mit ω = v / r exakt zu seiner sichtbaren Größe
+      // passend, statt mit einer hart geratenen Zahl (sah zu langsam aus).
+      const wsize = new THREE.Box3()
+        .setFromObject(w)
+        .getSize(new THREE.Vector3());
+      const r = (wsize.y + wsize.z) / 4;
+      w.userData.radius = r > 1e-3 ? r : SIZES.wheelDiameter / 2;
     }
   }
 

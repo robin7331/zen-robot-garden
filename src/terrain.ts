@@ -135,6 +135,75 @@ function generate(): void {
 
 generate();
 
+// — Mikro-Relief ————————————————————————————————————————————————————
+
+/**
+ * Das Mikro-Relief — die feinen Unebenheiten, die der groben Höhenkarte fehlen.
+ *
+ * Die Höhenkarte (Raster 0,25 m) kann nur große, sanfte Hügel. Ein echter
+ * Rasen hat aber auch unzählige kleine Beulen und Mulden: Grasbüschel,
+ * Trittdellen, Maulwurfshügelchen. Genau die liefert `microReliefAt` — ein
+ * feines, hochfrequentes Rauschen mit nur wenigen Zentimetern Amplitude.
+ *
+ * Wichtig: Das Mikro-Relief steckt bewusst NICHT in der Höhenkarte und damit
+ * auch nicht in den Sicht-Meshes oder im Gras — von oben bleibt der Garten
+ * sanft gewellt. Nur die Rad-Federung des Roboters tastet es zusätzlich ab:
+ * Die vier Räder sitzen je auf einer anderen kleinen Beule, federn verschieden
+ * tief ein, und der Körper wippt davon ganz von selbst — wie ein echter
+ * Mähroboter, der über die Grasnarbe rumpelt.
+ */
+const microComps: {
+  fx: number;
+  fz: number;
+  px: number;
+  pz: number;
+  amp: number;
+}[] = [];
+let microScale = 0;
+
+(function generateMicro(): void {
+  // Eigener Seed-Versatz -> das Mikro-Rauschen ist unabhängig von den Hügeln.
+  const rand = mulberry32((TERRAIN.seed ^ 0x9e3779b9) >>> 0);
+  // Vier Komponenten mit kurzen Wellenlängen 0,18..0,55 m — kürzer als Rad-
+  // Abstand und Radstand des Roboters, damit die vier Räder verschieden hoch
+  // sitzen und der Körper sowohl nickt als auch rollt.
+  for (let k = 0; k < 4; k++) {
+    microComps.push({
+      fx: (Math.PI * 2) / lerp(0.18, 0.55, rand()),
+      fz: (Math.PI * 2) / lerp(0.18, 0.55, rand()),
+      px: rand() * Math.PI * 2,
+      pz: rand() * Math.PI * 2,
+      amp: 1 / (k + 1), // spätere Komponenten tragen weniger bei
+    });
+  }
+  // Über ein feines Raster den größten Ausschlag suchen und so normieren, dass
+  // `TERRAIN.microRelief` die echte Spitzen-Amplitude ist (einmalig beim Laden).
+  let maxAbs = 0;
+  for (let z = Z0; z <= -Z0; z += 0.05) {
+    for (let x = X0; x <= -X0; x += 0.05) {
+      let h = 0;
+      for (const c of microComps) {
+        h += c.amp * Math.sin(x * c.fx + c.px) * Math.sin(z * c.fz + c.pz);
+      }
+      if (Math.abs(h) > maxAbs) maxAbs = Math.abs(h);
+    }
+  }
+  microScale = maxAbs > 1e-6 ? TERRAIN.microRelief / maxAbs : 0;
+})();
+
+/**
+ * Mikro-Relief-Höhe (m) an einem Welt-Punkt — die feine Unebenheit ZUSÄTZLICH
+ * zur Höhenkarte. Nur die Rad-Federung des Roboters nutzt das (siehe oben);
+ * `heightAt`/`normalAt` und alle Sicht-Meshes bleiben davon unberührt.
+ */
+export function microReliefAt(x: number, z: number): number {
+  let h = 0;
+  for (const c of microComps) {
+    h += c.amp * Math.sin(x * c.fx + c.px) * Math.sin(z * c.fz + c.pz);
+  }
+  return h * microScale;
+}
+
 /** Begrenzt v auf [lo, hi]. */
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;

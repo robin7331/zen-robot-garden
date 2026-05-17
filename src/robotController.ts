@@ -4,7 +4,7 @@ import { SIZES, DRIVE, BATTERY, SUSPENSION, TERRAIN } from './tokens';
 import { GROUP, collisionGroups } from './physics';
 import { LEITDRAHT, insideWire } from './wire';
 import { carrotTowardStart, signedDistanceToPolyline } from './polyline';
-import { heightAt, normalAt } from './terrain';
+import { heightAt, microReliefAt, normalAt } from './terrain';
 import type { RobotActivity } from './ui';
 
 /**
@@ -63,6 +63,8 @@ const BODY_HALF = {
 const ROBOT_MASS = 8; // kg — ungefähr wie ein echter Mähroboter
 
 // — Rad-Anordnung (lokal zum Roboter; Ursprung am Boden, mittig) ——————————
+// Notnagel-Rad-Radius — der echte Wert kommt pro Rad aus dem GLB-Mesh
+// (createRobot, userData.radius); dieser greift nur, falls er einmal fehlt.
 const WHEEL_RADIUS = SIZES.wheelDiameter / 2;
 const TRACK_HALF = SIZES.robotWidth / 2; // halber Abstand der beiden Räder
 const WHEEL_Z = -0.06; // Antriebsräder sitzen leicht hinter der Mitte
@@ -80,6 +82,17 @@ const GRIP_LAT = 70; // N pro m/s seitliches Wegrutschen (Kurven-Halt)
 const FORCE_MAX = 30; // N — eine Reibungskraft kann nicht beliebig groß werden
 
 const BLADE_SPIN = 6; // rad/s — Drehzahl der Mähklinge beim Fahren
+
+// — Sicht-Räder ————————————————————————————————————————————————————
+// Das Rad-Mesh rollt im Normalfall sauber mit dem Boden mit — beim Bremsen
+// und Drehen also OHNE künstlichen Schlupf. Sichtbar durchdrehen soll es nur,
+// wenn die Schlupf-Geschwindigkeit (Motortempo gegen echtes Bodentempo) groß
+// wird: beim Stoß gegen ein Hindernis (Körper steht, Motor läuft weiter) und
+// später bei nassem oder zu steilem Gras. Zwischen LOW und HIGH blendet der
+// gezeigte Schlupf weich ein.
+const SLIP_SHOW_LOW = 0.12; // m/s — darunter rollt das Rad sauber mit
+const SLIP_SHOW_HIGH = 0.4; // m/s — darüber dreht es frei mit Motortempo durch
+const WHEEL_SPIN_SMOOTH = 0.06; // s — Glättungs-Zeitkonstante des Sicht-Tempos
 
 // — Heimfahren ————————————————————————————————————————————————————
 const STEER_GAIN = 1.6; // wie kräftig der Roboter zu seinem Ziel einlenkt
@@ -188,6 +201,12 @@ function wrapPi(a: number): number {
   return a - Math.PI * 2 * Math.floor((a + Math.PI) / (Math.PI * 2));
 }
 
+/** Weiche 0..1-Blende: 0 bei x<=a, 1 bei x>=b, glatt dazwischen. */
+function smoothstep(a: number, b: number, x: number): number {
+  const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 /**
  * Steuert genau einen Roboter: sein Physik-Körper, seine zwei Rad-Motoren,
  * die Rad-Federung, die Reibungs-Berechnung, die Draht- und Stoß-Erkennung
@@ -202,6 +221,9 @@ export class RobotController {
   private readonly wheelLeftMesh: THREE.Object3D | null;
   private readonly wheelRightMesh: THREE.Object3D | null;
   private readonly bladeMesh: THREE.Object3D | null;
+  // Rad-Radien aus dem GLB-Mesh (createRobot) — für die Mesh-Drehrate v / r.
+  private readonly wheelRadiusLeft: number;
+  private readonly wheelRadiusRight: number;
 
   // Motor-Tempo der beiden Räder (Boden-Tempo in m/s).
   private speedLeft = 0;
@@ -209,6 +231,15 @@ export class RobotController {
   // Wunsch-Tempo, das die Autonomie gerade vorgibt.
   private targetLeft: number = DRIVE.maxSpeed;
   private targetRight: number = DRIVE.maxSpeed;
+
+  // Sicht-Rad-Tempo (m/s): die Abroll-Geschwindigkeit, mit der sich das
+  // Rad-Mesh dreht. Rollt mit dem Boden mit; bei großem Schlupf blendet es auf
+  // das freie Motortempo über (siehe applyWheel). `dispSpeed*` ist die noch
+  // weich geglättete Anzeige davon (gegen Physik-Zappeln).
+  private wheelSurfaceLeft = 0;
+  private wheelSurfaceRight = 0;
+  private dispSpeedLeft = 0;
+  private dispSpeedRight = 0;
 
   // Autonomie: Zustand + Restzeit + Drehung.
   private state: State = 'driving';
@@ -270,6 +301,10 @@ export class RobotController {
     this.wheelLeftMesh = view.getObjectByName('wheelLeft') ?? null;
     this.wheelRightMesh = view.getObjectByName('wheelRight') ?? null;
     this.bladeMesh = view.getObjectByName('blade') ?? null;
+    this.wheelRadiusLeft =
+      (this.wheelLeftMesh?.userData.radius as number) ?? WHEEL_RADIUS;
+    this.wheelRadiusRight =
+      (this.wheelRightMesh?.userData.radius as number) ?? WHEEL_RADIUS;
 
     // Dynamischer Körper mit vollen 6 Freiheitsgraden — er kann jetzt
     // klettern, sich neigen und (auf einem Steilhang) sogar kippen. Etwas
@@ -415,8 +450,12 @@ export class RobotController {
 
     // Rad-Federung an allen vier Rädern — sie hält den Körper auf dem Gelände
     // (auch im Stillstand). Nur die Antriebsräder bekommen zusätzlich Schub.
-    this.applyWheel(-TRACK_HALF, WHEEL_Z, true, this.speedLeft, dt);
-    this.applyWheel(TRACK_HALF, WHEEL_Z, true, this.speedRight, dt);
+    this.wheelSurfaceLeft =
+      this.applyWheel(-TRACK_HALF, WHEEL_Z, true, this.speedLeft, dt) ??
+      this.wheelSurfaceLeft;
+    this.wheelSurfaceRight =
+      this.applyWheel(TRACK_HALF, WHEEL_Z, true, this.speedRight, dt) ??
+      this.wheelSurfaceRight;
     this.applyWheel(-TRACK_HALF, CASTER_Z, false, 0, dt);
     this.applyWheel(TRACK_HALF, CASTER_Z, false, 0, dt);
   }
@@ -431,19 +470,26 @@ export class RobotController {
     this.view.position.set(pos.x, pos.y, pos.z);
     this.view.quaternion.set(rot.x, rot.y, rot.z, rot.w);
 
-    // Räder drehen sich, weil sie über den Boden abrollen (Tempo / Radius).
-    // Gedreht wird um die echte Achs-Achse des Rad-Knotens (aus createRobot,
-    // userData.spinAxis) — nicht blind um die lokale X-Achse.
+    // Räder drehen sich, weil sie über den Boden abrollen: Drehrate = Sicht-
+    // Tempo / Radradius. Das Sicht-Tempo ist die echte Bodengeschwindigkeit
+    // des Rades (also kein künstlicher Schlupf beim Bremsen/Drehen) und
+    // blendet nur bei echtem Schlupf auf das Motortempo über (applyWheel).
+    // Hier wird es noch weich geglättet, damit Physik-Zappeln nicht
+    // durchschlägt. Gedreht wird um die echte Achs-Achse des Rad-Knotens
+    // (spinAxis aus createRobot) — nicht blind um die lokale X-Achse.
+    const k = 1 - Math.exp(-frameDt / WHEEL_SPIN_SMOOTH);
+    this.dispSpeedLeft += (this.wheelSurfaceLeft - this.dispSpeedLeft) * k;
+    this.dispSpeedRight += (this.wheelSurfaceRight - this.dispSpeedRight) * k;
     if (this.wheelLeftMesh) {
       this.wheelLeftMesh.rotateOnAxis(
         wheelSpinAxis(this.wheelLeftMesh),
-        (this.speedLeft / WHEEL_RADIUS) * frameDt,
+        (this.dispSpeedLeft / this.wheelRadiusLeft) * frameDt,
       );
     }
     if (this.wheelRightMesh) {
       this.wheelRightMesh.rotateOnAxis(
         wheelSpinAxis(this.wheelRightMesh),
-        (this.speedRight / WHEEL_RADIUS) * frameDt,
+        (this.dispSpeedRight / this.wheelRadiusRight) * frameDt,
       );
     }
     // Mähklinge dreht nur, wenn der Roboter wirklich mäht.
@@ -484,6 +530,8 @@ export class RobotController {
     this.speedRight = 0;
     this.targetLeft = 0;
     this.targetRight = 0;
+    this.wheelSurfaceLeft = 0;
+    this.wheelSurfaceRight = 0;
     const p = this.body.translation();
     this.dragX = p.x;
     this.dragZ = p.z;
@@ -830,6 +878,8 @@ export class RobotController {
     this.speedRight = 0;
     this.targetLeft = 0;
     this.targetRight = 0;
+    this.wheelSurfaceLeft = 0;
+    this.wheelSurfaceRight = 0;
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
@@ -875,6 +925,8 @@ export class RobotController {
    * @param drive      true = Antriebsrad (mit Reibung), false = Lenkrolle
    * @param motorSpeed Wunsch-Abrolltempo des Rad-Motors (m/s)
    * @param dt         Physik-Schrittweite (s)
+   * @returns Sicht-Abrolltempo des Rades (m/s) für die Mesh-Drehung; bei
+   *          Lenkrollen `null` (die drehen sich im Sicht-Modell nicht mit).
    */
   private applyWheel(
     localX: number,
@@ -882,7 +934,7 @@ export class RobotController {
     drive: boolean,
     motorSpeed: number,
     dt: number,
-  ): void {
+  ): number | null {
     // Welt-Versatz vom Körper-Mittelpunkt zum Rad-Anker (lokal y = 0).
     this._r.set(localX, 0, localZ).applyQuaternion(this._quat);
     const pos = this.body.translation();
@@ -898,7 +950,10 @@ export class RobotController {
     const vz = lin.z + (ang.x * this._r.y - ang.y * this._r.x);
 
     // — Federung: drückt den Körper (nahezu senkrecht) nach oben ——————————
-    const groundY = heightAt(wx, wz);
+    // Die Geländehöhe bekommt zusätzlich das feine Mikro-Relief aufaddiert —
+    // kleine Beulen und Mulden, die nur die Räder spüren. Weil die vier Räder
+    // verschieden hohe Stellen abtasten, wippt der Körper davon natürlich.
+    const groundY = heightAt(wx, wz) + microReliefAt(wx, wz);
     const currentLength = wy - groundY; // Anker-Höhe über dem Gelände
     const compression = SUSPENSION.restLength - currentLength;
     if (compression > 0) {
@@ -912,16 +967,17 @@ export class RobotController {
       );
     }
 
-    if (!drive) return; // Lenkrollen: keine Horizontalkraft
+    if (!drive) return null; // Lenkrollen: keine Horizontalkraft
 
-    // Hängt das Rad weit in der Luft (über einer Kuppe), greift es nicht.
-    if (currentLength > SUSPENSION.restLength + 0.08) return;
+    // Hängt das Rad weit in der Luft (über einer Kuppe), greift es nicht — es
+    // dreht dann frei mit dem Motortempo weiter.
+    if (currentLength > SUSPENSION.restLength + 0.08) return motorSpeed;
 
     // — Schlupf-Reibung in der Tangentialebene des Geländes ————————————————
     const n = normalAt(wx, wz);
     // Vorwärts-Richtung des Rades auf die Hang-Ebene projiziert.
     this._ft.copy(this._fwd).addScaledVector(n, -this._fwd.dot(n));
-    if (this._ft.lengthSq() < 1e-6) return;
+    if (this._ft.lengthSq() < 1e-6) return motorSpeed;
     this._ft.normalize();
     // Querrichtung in der Hang-Ebene.
     this._lt.crossVectors(n, this._ft).normalize();
@@ -952,5 +1008,19 @@ export class RobotController {
       { x: wx, y: wy, z: wz },
       true,
     );
+
+    // — Sicht-Abrolltempo: wie schnell sich das Rad-Mesh drehen soll ————————
+    // Normalfall: das Rad rollt sauber mit dem Boden mit (vForward) — beim
+    // Bremsen und Drehen also ohne künstlichen Schlupf. Erst wenn die
+    // Schlupf-Geschwindigkeit groß wird (Stoß: Körper steht, Motor läuft
+    // weiter; später nasses/zu steiles Gras), blendet es weich auf das frei
+    // durchdrehende Motortempo über.
+    const slipVel = motorSpeed - vForward;
+    const showSlip = smoothstep(
+      SLIP_SHOW_LOW,
+      SLIP_SHOW_HIGH,
+      Math.abs(slipVel),
+    );
+    return vForward + slipVel * showSlip;
   }
 }

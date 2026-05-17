@@ -76,6 +76,11 @@ export const TERRAIN = {
   maxSlopeDeg: 20, // ° — auf diese Steigung wird das Rausch-Erzeugen gedeckelt
   //                  (immer kletterbar, kippt nie von allein)
   reliefAmplitude: 0.4, // m — Ziel-Relief ±0,4 m vor der Steigungs-Deckelung
+  // Mikro-Relief: die feinen Unebenheiten (Grasbüschel, Trittdellen, kleine
+  // Mulden), die in der groben 0,25-m-Höhenkarte fehlen. Steckt NICHT in der
+  // Höhenkarte — nur die Rad-Federung des Roboters tastet es ab, sodass er
+  // beim Fahren leicht wippt. Der Garten selbst bleibt sanft gewellt.
+  microRelief: 0.01, // m — Spitzen-Amplitude der feinen Unebenheiten
 } as const;
 
 /**
