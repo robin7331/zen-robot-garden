@@ -10,7 +10,7 @@ import { heightAt } from './terrain';
  *
  *   - **Gras-Decke** — ein unterteiltes, in der Höhe verschobenes Mesh; die
  *     Stützpunkte sitzen auf der Höhenkarte. Flat-shaded -> kantige Low-Poly-
- *     Hügel, passt zum Origami-Look. Ragt mit der Gras-Lippe leicht über.
+ *     Hügel, passt zum Origami-Look. Schließt bündig mit den Wänden ab.
  *   - **Seitenwände** — vier senkrechte Schnitte. Ihre Oberkante folgt dem
  *     Gelände, der Boden ist flach. Sie zeigen drei Schichten als waagerechte
  *     Bänder: dünnes Gras, dann Erd-Band, dann Fels — ein echter
@@ -20,7 +20,7 @@ import { heightAt } from './terrain';
  * Die alte `makeSlab`-Box entfällt: der Block ist kein Quader mehr.
  */
 
-/** Halbe Rasen-Maße (Wände sitzen an der Rasenkante; die Lippe ragt darüber). */
+/** Halbe Rasen-Maße (Wände und Gras-Decke schließen an der Rasenkante ab). */
 const HW = SIZES.lawnWidth / 2;
 const HD = SIZES.lawnDepth / 2;
 
@@ -46,12 +46,12 @@ export function createGarden(): THREE.Group {
 
 /**
  * Die Gras-Decke: ein unterteiltes Mesh, dessen Stützpunkte auf die
- * Höhenkarte gehoben werden. Etwas größer als der Rasen — die Gras-Lippe ragt
- * über die Wand-Oberkante (am Rand auf die Rand-Höhe geklemmt).
+ * Höhenkarte gehoben werden. Genau Rasen-groß — die Kante schließt bündig mit
+ * der Wand-Oberkante ab, kein Überstand.
  */
 function makeGrassDeck(): THREE.Mesh {
-  const w = SIZES.lawnWidth + SIZES.grassLip * 2;
-  const d = SIZES.lawnDepth + SIZES.grassLip * 2;
+  const w = SIZES.lawnWidth;
+  const d = SIZES.lawnDepth;
   // Unterteilung im Geländeraster — sanfte, aber kantige Low-Poly-Hügel.
   const segX = Math.round(w / TERRAIN.cellSize);
   const segZ = Math.round(d / TERRAIN.cellSize);

@@ -45,7 +45,6 @@ export const SIZES = {
   lawnDepth: 6, // Rasen-Tiefe (Z)
   wireInset: 0.4, // Abstand des Begrenzungsdrahts von der Rasenkante (je Seite)
   grassThickness: 0.12, // dünne Gras-Deckschicht
-  grassLip: 0.1, // Überstand der Gras-Lippe je Seite
   soilThickness: 0.3, // Erd-Band
   rockThickness: 0.7, // Fels-Schicht
 
