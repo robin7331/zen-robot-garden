@@ -139,7 +139,7 @@ Echte Einheiten (cm / m). Startwerte — im Code feinjustierbar.
 
 | Element | Maß | Anmerkung |
 |---|---|---|
-| Rasen | **8 m × 6 m** | rechteckig, sanft gewelltes Gelände (~±0,4 m) |
+| Rasen | **5 m × 5 m** | quadratisch, sanft gewelltes Gelände (~±0,4 m) |
 | Roboter | **60 cm lang · 45 cm breit · 25 cm hoch** | echter Mähroboter-Maßstab |
 | Antriebsräder | **Ø 20 cm** | zwei Stück, seitlich |
 | Gras lang | **10 cm** | ungemäht — dichter Teppich |
@@ -153,8 +153,8 @@ Echte Einheiten (cm / m). Startwerte — im Code feinjustierbar.
 
 **Logik:** Langes Gras (10 cm) reicht dem 25-cm-Roboter bis ~40 % seiner Höhe —
 gut sichtbar, klar überfahrbar, und wird auf ~2,6 cm heruntergemäht. Der scharfe
-Höhen-Absatz dazwischen ist das Hauptsignal der Mähspur. Der 8-m-Rasen fasst gut
-13 Roboter-Längen → genug Platz zum Fahren und Mähen.
+Höhen-Absatz dazwischen ist das Hauptsignal der Mähspur. Der 5-m-Rasen fasst gut
+8 Roboter-Längen → genug Platz zum Fahren und Mähen.
 
 ## Der Diorama-Block
 
@@ -195,7 +195,7 @@ Höhen-Textur des Gitters. Startwerte, im Code (`tokens.ts`) feinjustierbar.
 
 | Token | Wert | Was |
 |---|---|---|
-| `density` | **6500 /m²** | Halme je m² (8×6 m → ~312000 Halme) — dichter Teppich |
+| `density` | **6500 /m²** | Halme je m² (6×6 m → ~234000 Halme) — dichter Teppich |
 | `height` | **10 cm** | voll gewachsene Halm-Höhe (langes Gras) |
 | `baseWidth` | **2,4 cm** | Fußbreite des Halm-Dreiecks (breit → dichter Teppich) |
 | `stubMin` | **0,26** | frisch gemäht bleibt ein Stummel (≈ 2,6 cm), nie kahl |
@@ -219,7 +219,7 @@ Höhen-Textur des Gras-Shaders werden daraus abgeleitet. Startwerte, im Code
 
 | Token | Wert | Was |
 |---|---|---|
-| `TERRAIN.cellSize` | **0,25 m** | Raster-Zellgröße (8×6 m → 33×25 Stützpunkte) |
+| `TERRAIN.cellSize` | **0,25 m** | Raster-Zellgröße (6×6 m → 25×25 Stützpunkte) |
 | `TERRAIN.seed` | fest | Seed des Start-Rauschens — gleicher Garten bei jedem Laden |
 | `TERRAIN.maxSlopeDeg` | **20°** | Steigungs-Deckelung (immer kletterbar, kippt nie) |
 | `TERRAIN.reliefAmplitude` | **0,4 m** | Ziel-Relief ±0,4 m vor der Deckelung |
@@ -314,16 +314,17 @@ Werte fürs autonome Heimfahren über den Leitdraht. Startwerte, im Code
 | `BATTERY.low` | **0,5** | ab hier sucht der Roboter den Leitdraht (≈ 23 s Reserve) |
 | `followLookahead` | **0,35 m** | Vorausschau-Punkt ("Carrot") des Leitdraht-Linienfolgers |
 | `dockDropRadius` | **0,45 m** | Fang-Radius: so nah abgesetzt, dockt der Roboter an |
-| `DOCK_RADIUS` | 0,18 m | präzise Ankunft des autonomen Linienfolgers an der Station |
+| `DOCK_RADIUS` | 0,05 m | Einrast-Radius des Linienfolgers an der Station (klein, damit das Andocken kein sichtbarer Sprung ist) |
 
 **Leitdraht-Nägel** (`LEITDRAHT_NAILS`, Weltkoordinaten X/Z in Metern) — die
 offene Draht-Linie vom Dock zur Y-Verzweigung am Begrenzungsdraht:
 
 | Nagel | X | Z | Was |
 |---|---|---|---|
-| 0 | 3,54 | −1,6 | Dock — in der Ladestation |
-| 1 | 0,4 | 0,3 | sanfter Knick |
-| 2 | −3,6 | 1,0 | Y-Verzweigung auf den Begrenzungsdraht |
+| 0 | 2,04 | −1,33 | Dock — in der Ladestation |
+| 1 | 1,15 | −1,33 | gerade Anfahrt — gleiches Z wie das Dock |
+| 2 | 0,25 | 0,25 | sanfter Knick |
+| 3 | −2,1 | 0,83 | Y-Verzweigung auf den Begrenzungsdraht |
 
 Beide Drähte teilen sich die Farbe `wire` (es ist physisch ein Draht). Die
 Nägel sind als kleine Punkte in derselben Farbe sichtbar.

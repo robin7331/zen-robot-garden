@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   // auf dem Hang: auf die Geländehöhe gehoben und zur Gelände-Normale geneigt
   // (kein flaches Podest — konsequent zur Vollphysik).
   const stationYaw = -Math.PI / 2;
-  const stationPos = new THREE.Vector3(3.6, 0, -1.6);
+  const stationPos = new THREE.Vector3(2.1, 0, -1.33);
   stationPos.y = heightAt(stationPos.x, stationPos.z);
   const station = await createChargingStationMesh();
   station.position.copy(stationPos);

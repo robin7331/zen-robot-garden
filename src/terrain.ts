@@ -19,8 +19,8 @@ import { SIZES, TERRAIN } from './tokens';
  * Terraforming-Pinsel-UI ändert nur das Array und baut Collider, Meshes und
  * Textur neu — kein Umbau dieser Schnittstelle nötig.
  *
- * Raster: Stützpunkte alle `TERRAIN.cellSize` (~0,25 m). Bei 8x6 m sind das
- * GX x GZ = 33 x 25 Punkte. Bewusst gröber als das 0,1-m-Mäh-Gitter — das
+ * Raster: Stützpunkte alle `TERRAIN.cellSize` (~0,25 m). Bei 5x5 m sind das
+ * GX x GZ = 21 x 21 Punkte. Bewusst gröber als das 0,1-m-Mäh-Gitter — das
  * Gelände will große, sanfte Hügel.
  */
 

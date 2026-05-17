@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SIZES } from './tokens';
 
 /**
  * Orthografische Orbit-Kamera — der "Modell"-Look des Dioramas:
@@ -10,8 +11,14 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
  * - Zoom über die Frustum-Größe (camera.zoom)
  */
 
-/** Halbe Höhe des sichtbaren Ausschnitts in Weltmetern (Frustum). */
-const VIEW_SIZE = 7;
+/**
+ * Halbe Höhe des sichtbaren Ausschnitts in Weltmetern (Frustum) bei Zoom 1.
+ *
+ * Aus der größeren Rasen-Kante abgeleitet (× 0,875) — so füllt der Garten den
+ * Rahmen gleich, egal wie groß der Rasen in tokens.ts gesetzt ist. Die Orbit-
+ * Kamera dreht sich, darum zählt die größere der beiden Kanten.
+ */
+const VIEW_SIZE = Math.max(SIZES.lawnWidth, SIZES.lawnDepth) * 0.875;
 
 /** Worauf die Kamera blickt: ungefähr die Mitte des Diorama-Slabs. */
 const TARGET = new THREE.Vector3(0, -0.3, 0);

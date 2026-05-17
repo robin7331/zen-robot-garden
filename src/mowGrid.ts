@@ -40,7 +40,7 @@ export type AreaMask = {
   covers(x: number, z: number): boolean;
 };
 
-// Feld-Anzahl, abgeleitet aus Rasen-Maß und Feld-Größe (8x6 m -> 80x60).
+// Feld-Anzahl, abgeleitet aus Rasen-Maß und Feld-Größe (5x5 m -> 50x50).
 const CELLS_X = Math.round(SIZES.lawnWidth / GRASS.cellSize);
 const CELLS_Z = Math.round(SIZES.lawnDepth / GRASS.cellSize);
 const CELL_COUNT = CELLS_X * CELLS_Z;

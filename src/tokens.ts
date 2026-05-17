@@ -47,8 +47,8 @@ export const COLORS = {
 
 /** Maße in Metern (echte Einheiten, siehe DESIGN.md). */
 export const SIZES = {
-  lawnWidth: 8, // Rasen-Breite (X)
-  lawnDepth: 6, // Rasen-Tiefe (Z)
+  lawnWidth: 5, // Rasen-Breite (X)
+  lawnDepth: 5, // Rasen-Tiefe (Z) — quadratischer Rasen
   wireInset: 0.4, // Abstand des Begrenzungsdrahts von der Rasenkante (je Seite)
   grassThickness: 0.12, // dünne Gras-Deckschicht
   soilThickness: 0.3, // Erd-Band
@@ -70,7 +70,7 @@ export const SIZES = {
  * später eine Terraforming-Pinsel-UI einfach dazukommen.
  */
 export const TERRAIN = {
-  cellSize: 0.25, // m — Raster-Zellgröße (8x6 m -> 33x25 Stützpunkte). Bewusst
+  cellSize: 0.25, // m — Raster-Zellgröße (5x5 m -> 21x21 Stützpunkte). Bewusst
   //                 gröber als das 0,1-m-Mäh-Gitter — große, sanfte Hügel.
   seed: 20260516, // fester Seed -> der Garten sieht bei jedem Laden gleich aus
   maxSlopeDeg: 20, // ° — auf diese Steigung wird das Rausch-Erzeugen gedeckelt
@@ -160,7 +160,7 @@ export const BATTERY = {
  * nachgewachsen). Siehe mowGrid.ts. Alle Werte einstellbar.
  */
 export const GRASS = {
-  cellSize: 0.1, // m — Kantenlänge eines Gitter-Felds (8x6 m -> 80x60 Felder)
+  cellSize: 0.1, // m — Kantenlänge eines Gitter-Felds (5x5 m -> 50x50 Felder)
   regrowTime: 600, // s — mittlere Zeit von frisch gemäht (0) bis voll (1)
   // Streuung des Nachwachs-Tempos: jedes Feld bekommt beim Mähen ein eigenes,
   // zufälliges Tempo. 0.6 -> ein Feld wächst zwischen 0.4x und 1.6x so schnell
@@ -187,7 +187,7 @@ export const BLADES = {
   // Halme je m². Dichter Rasen — der Flaschenhals ist nicht die Dreiecks-
   // zahl (die GPU schluckt Millionen mühelos), sondern Fragment-Overdraw;
   // weil der Gras-Shader winzig ist, bleibt selbst dichtes Gras billig.
-  density: 6500, // 8x6 m -> ~312000 Halme — dichter Teppich-Look
+  density: 6500, // 5x5 m -> ~162000 Halme — dichter Teppich-Look
 
   height: 0.1, // m — voll gewachsene Halm-Höhe (langes Gras)
   baseWidth: 0.024, // m — Fußbreite des Halm-Dreiecks (breit -> dichter Teppich)
@@ -271,17 +271,17 @@ export const GROUND = {
  *
  *   nail[0] = Dock — in der Ladestation an der +X-Kante. Muss mit dem in
  *             main.ts aus der Stations-Pose berechneten Andock-Punkt
- *             übereinstimmen (Station bei x≈3,6 -> Dock x≈3,54).
+ *             übereinstimmen (Station bei x≈2,1 -> Dock x≈2,04).
  *   nail[1] = Gerade Anfahrt — gleiches z wie das Dock. Das letzte Draht-
  *             Stück läuft so schnurgerade entlang +X in die Station; der
  *             Roboter richtet sich darauf aus und fährt gerade hinein.
  *   nail[2] = ein sanfter Knick quer durch den Garten (obtus, kein Eck-Pivot).
  *   nail[3] = fernes Ende — eine echte Y-Verzweigung auf den Begrenzungsdraht
- *             an der -X-Kante (x = -(lawnWidth/2 - wireInset) = -3,6).
+ *             an der -X-Kante (x = -(lawnWidth/2 - wireInset) = -2,1).
  */
 export const LEITDRAHT_NAILS = [
-  { x: 3.54, z: -1.6 },
-  { x: 2.0, z: -1.6 },
-  { x: 0.4, z: 0.3 },
-  { x: -3.6, z: 1.0 },
+  { x: 2.04, z: -1.33 },
+  { x: 1.15, z: -1.33 },
+  { x: 0.25, z: 0.25 },
+  { x: -2.1, z: 0.83 },
 ] as const;
